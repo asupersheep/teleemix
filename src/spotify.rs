@@ -72,13 +72,15 @@ async fn get_metadata_from_embed(client: &Client, url: &str) -> (String, String)
     let entity = &data["props"]["pageProps"]["state"]["data"]["entity"];
 
     let title = entity["name"].as_str().unwrap_or("").to_string();
-    let artists: Vec<&str> = entity["artists"]
+    let artist = entity["artists"]
         .as_array()
-        .unwrap_or(&vec![])
-        .iter()
-        .filter_map(|a| a["name"].as_str())
-        .collect();
-    let artist = artists.join(", ");
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|a| a["name"].as_str().map(|s| s.to_string()))
+                .collect::<Vec<String>>()
+                .join(", ")
+        })
+        .unwrap_or_default();
 
     (title, artist)
 }
