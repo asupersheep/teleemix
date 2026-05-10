@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="logo.png" alt="Teleemix Logo" width="200"/>
+</p>
+
 # Teleemix
 
 A fast, lightweight Telegram bot written in Rust for requesting music downloads via your self-hosted [deemix](https://github.com/bambanah/deemix) instance — from your phone, without ever touching the deemix web UI or dealing with ARL logins.
@@ -9,14 +13,15 @@ Supports Deezer URLs, Spotify links, and free-text search.
 ## Features
 
 - 🎵 Send a **Deezer URL** (track, album, playlist) → queued instantly
-- 🟢 Send a **Spotify link** → title and artist resolved automatically, then matched on Deezer
+- 🟢 Send a **Spotify link** (track or album) → looked up and queued automatically
 - 🔍 Send a **song or artist name** → search results shown as buttons to pick from
-- 💿 `/album` search
-- 🔄 `/updatearl` — update your Deezer ARL via Telegram (updates compose file and rebuilds automatically)
-- 🔒 Optional user allowlist to restrict access to yourself
-- ⚡ Written in Rust — tiny memory footprint, fast startup, single binary
-
-No Spotify API key required — uses the Spotify embed page, completely free.
+- 📲 `/menu` — quick action keyboard buttons
+- 💿 `/album` — search albums
+- 🔔 `/register` — get notified when the bot restarts
+- 🔄 `/updatearl` — update your Deezer ARL interactively via Telegram
+- 📊 `/status` — shows pending, downloading, and completed queue items separately
+- 🔒 Optional user allowlist to restrict access
+- ⚡ Written in Rust — tiny memory footprint, static binary, no runtime dependencies
 
 ---
 
@@ -39,12 +44,9 @@ No Spotify API key required — uses the Spotify embed page, completely free.
 
 ### 2. Get your Deezer ARL
 
-1. Log in to [deezer.com](https://deezer.com) in your browser
-2. Open DevTools (F12) → Network tab → refresh the page
-3. Click any request to `deezer.com` → Request Headers → find the `Cookie` header
-4. Copy the value between `arl=` and the next `;`
+For instructions on how to obtain your Deezer ARL token, refer to the [deemix documentation](https://github.com/bambanah/deemix#arl).
 
-The ARL is ~190 characters and lasts several months. When it expires, use `/updatearl <new_arl>` in Telegram to update it without touching the server.
+The ARL lasts several months. When it expires, use `/updatearl` in Telegram to update it without touching the server.
 
 ### 3. Configure
 
@@ -57,27 +59,22 @@ Fill in all the values — see `.env.example` for descriptions of each variable.
 
 ### 4. Configure volume mounts
 
-Edit `docker-compose.yml` and update the left side of this volume to point to your actual compose file on the host:
+Edit `docker-compose.yml` and update the left side of these volume mounts to match your setup:
 
 ```yaml
 volumes:
   - /path/to/your/docker-compose.yml:/compose/docker-compose.yml
+  - /path/to/your/.env:/app/.env
+  - /path/to/your/data/registered_users.txt:/app/registered_users.txt
+  - /var/run/docker.sock:/var/run/docker.sock
 ```
 
-This allows the `/updatearl` command to persist ARL changes across container restarts.
+Create the registered users file before starting:
+```bash
+touch /path/to/your/data/registered_users.txt
+```
 
 ### 5. Deploy
-
-```bash
-docker compose pull
-docker compose up -d
-```
-
----
-
-## Updating
-
-To update to the latest version:
 
 ```bash
 docker compose pull
@@ -91,11 +88,44 @@ docker compose up -d
 | Action | How |
 |---|---|
 | Download a track | Send a Deezer or Spotify link, or just type the song name |
-| Search tracks | `/search <song name>` |
-| Search albums | `/album <album name>` |
-| Download a Deezer URL | `/dl <url>` |
+| Search tracks | `/search` or tap 🔍 Search a track in /menu |
+| Search albums | `/album` or tap 💿 Search an album in /menu |
+| Download a Deezer URL | `/dl` |
+| Download from Spotify | `/sp` |
 | Check deemix status | `/status` |
-| Update ARL | `/updatearl <new_arl>` |
+| Register for notifications | `/register` |
+| Update ARL | `/updatearl` |
+| Show all buttons | `/menu` |
+
+---
+
+## Updating
+
+### Manual update
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+### Automatic updates with Watchtower
+
+If you want Teleemix to update itself automatically whenever a new image is published, you can use [Watchtower](https://github.com/containrrr/watchtower) or an alternative like [Diun](https://github.com/crazy-max/diun).
+
+Watchtower example — add to your compose file:
+
+```yaml
+  watchtower:
+    image: containrrr/watchtower
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: --interval 86400 teleemix
+    restart: unless-stopped
+```
+
+This checks for a new `teleemix` image once a day and updates automatically.
+
+> ⚠️ Only recommended if you trust the source. For production use, pin to a specific image digest instead.
 
 ---
 
@@ -107,36 +137,23 @@ Set `ALLOWED_USERS` in your `.env` to a comma-separated list of Telegram user ID
 ALLOWED_USERS=123456789,987654321
 ```
 
-Leave empty to allow anyone who messages the bot. Fine for private bots, not recommended if the bot token is public.
+Leave empty to allow anyone who messages the bot. Fine for private bots, not recommended if the bot token is shared publicly.
 
 To find your Telegram user ID, message [@userinfobot](https://t.me/userinfobot).
 
 ---
 
-## How Spotify links work
+## Notifications on restart
 
-Teleemix does **not** use the Spotify Web API and requires **no Spotify credentials**. Instead it:
-
-1. Scrapes the Spotify embed page to extract the track title and artist
-2. Searches deemix with that info
-3. Shows you the top results as buttons to confirm
-
-No setup needed — it works out of the box.
+Send `/register` to the bot once. From then on, every time the container restarts you will receive a message letting you know the bot is back online.
 
 ---
 
 ## Updating the ARL
 
-When your Deezer ARL expires (every few months), send:
-
-```
-/updatearl <your_new_arl>
-```
-
-The bot will:
-1. Re-login to deemix immediately with the new ARL
-2. Update the ARL in your compose file on disk
-3. Trigger a container rebuild so the new ARL persists across restarts
+When your Deezer ARL expires, send `/updatearl` to the bot. It will prompt you to send the new ARL, then:
+1. Re-logs into deemix immediately
+2. Updates the ARL in your `.env` file so it persists across restarts
 
 ---
 
