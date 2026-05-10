@@ -166,19 +166,8 @@ async fn handle_command(
         Command::Start | Command::Help => {
             bot.send_message(
                 msg.chat.id,
-                "🎵 *Teleemix*\n\n\
-                Send me any of these:\n\
-                • A Deezer URL — queued instantly\n\
-                • A Spotify track/album link — looked up and queued\n\
-                • Any song or artist name — search and pick\n\n\
-                Commands:\n\
-                • `/dl <deezer url>` — queue a download\n\
-                • `/search <song>` — search tracks\n\
-                • `/album <name>` — search albums\n\
-                • `/status` — check deemix\n\
-                • `/updatearl <arl>` — update your Deezer ARL",
+                "🎵 Teleemix\n\nSend me any of these:\n• A Deezer URL — queued instantly\n• A Spotify track/album link — looked up and queued\n• Any song or artist name — search and pick\n\nCommands:\n/dl <deezer url> — queue a download\n/search <song> — search tracks\n/album <name> — search albums\n/status — check deemix\n/updatearl <arl> — update your Deezer ARL",
             )
-            .parse_mode(ParseMode::MarkdownV2)
             .await?;
         }
 
@@ -200,8 +189,7 @@ async fn handle_command(
 
         Command::Dl(url) => {
             if url.is_empty() {
-                bot.send_message(msg.chat.id, "Usage: `/dl <deezer url>`")
-                    .parse_mode(ParseMode::MarkdownV2)
+                bot.send_message(msg.chat.id, "Usage: /dl <deezer url>")
                     .await?;
                 return Ok(());
             }
@@ -210,8 +198,7 @@ async fn handle_command(
 
         Command::Search(query) => {
             if query.is_empty() {
-                bot.send_message(msg.chat.id, "Usage: `/search <song name>`")
-                    .parse_mode(ParseMode::MarkdownV2)
+                bot.send_message(msg.chat.id, "Usage: /search <song name>")
                     .await?;
                 return Ok(());
             }
@@ -220,8 +207,7 @@ async fn handle_command(
 
         Command::Album(query) => {
             if query.is_empty() {
-                bot.send_message(msg.chat.id, "Usage: `/album <album name>`")
-                    .parse_mode(ParseMode::MarkdownV2)
+                bot.send_message(msg.chat.id, "Usage: /album <album name>")
                     .await?;
                 return Ok(());
             }
@@ -315,9 +301,8 @@ async fn handle_callback(
                     bot.edit_message_text(
                         msg.chat.id,
                         msg.id,
-                        format!("✅ Added to queue!\n`{}`", url),
+                        format!("✅ Added to queue!\n{}", url),
                     )
-                    .parse_mode(ParseMode::MarkdownV2)
                     .await?;
                 }
                 Err(e) => {
@@ -384,9 +369,8 @@ async fn do_search(
     let sent = bot
         .send_message(
             msg.chat.id,
-            format!("🔍 Searching for *{}*\\.\\.\\.", escape_md(query)),
+            format!("🔍 Searching for {}...", query),
         )
-        .parse_mode(ParseMode::MarkdownV2)
         .await?;
 
     match deemix::search(state, query, search_type).await {
@@ -428,9 +412,8 @@ async fn do_search(
             bot.edit_message_text(
                 msg.chat.id,
                 sent.id,
-                format!("Results for *{}*:", escape_md(query)),
+                format!("Results for {}:", query),
             )
-            .parse_mode(ParseMode::MarkdownV2)
             .reply_markup(InlineKeyboardMarkup::new(buttons))
             .await?;
         }
@@ -463,12 +446,8 @@ async fn handle_spotify(
             bot.edit_message_text(
                 msg.chat.id,
                 sent.id,
-                format!(
-                    "🔍 Found *{}*\nSearching on Deezer\\.\\.\\.",
-                    escape_md(&meta.label)
-                ),
+                format!("🔍 Found {}\nSearching on Deezer...", meta.label),
             )
-            .parse_mode(ParseMode::MarkdownV2)
             .await?;
 
             // Re-use do_search but we need a fresh message — edit the existing one
@@ -504,9 +483,8 @@ async fn handle_spotify(
                     bot.edit_message_text(
                         msg.chat.id,
                         sent.id,
-                        format!("Results for *{}*:", escape_md(&meta.query)),
+                        format!("Results for {}:", meta.query),
                     )
-                    .parse_mode(ParseMode::MarkdownV2)
                     .reply_markup(InlineKeyboardMarkup::new(buttons))
                     .await?;
                 }
@@ -546,9 +524,8 @@ async fn handle_updatearl(
             bot.edit_message_text(
                 msg.chat.id,
                 sent.id,
-                format!("✅ Logged in as *{}*\n🔄 Updating compose file\\.\\.\\.", escape_md(&username)),
+                format!("✅ Logged in as {}\n🔄 Updating compose file...", username),
             )
-            .parse_mode(ParseMode::MarkdownV2)
             .await?;
 
             // Update compose file
@@ -583,9 +560,8 @@ async fn handle_updatearl(
             bot.edit_message_text(
                 msg.chat.id,
                 sent.id,
-                "✅ Compose file updated\n🔄 Rebuilding container\\.\\.\\. \\(bot will restart\\)",
+                "✅ Compose file updated\n🔄 Rebuilding container... (bot will restart)",
             )
-            .parse_mode(ParseMode::MarkdownV2)
             .await?;
 
             // Trigger rebuild detached
