@@ -28,14 +28,16 @@ pub async fn login_arl(state: &Arc<BotState>, arl: &str) -> Result<String, Strin
 
     let data: Value = resp.json().await.map_err(|e| e.to_string())?;
 
-    if data["status"] == 1 {
+    // status 1 = logged in, status 2 = already logged in
+    let status = data["status"].as_i64().unwrap_or(0);
+    if status == 1 || status == 2 {
         let username = data["user"]["name"]
             .as_str()
             .unwrap_or("unknown")
             .to_string();
         Ok(username)
     } else {
-        Err(format!("{}", data))
+        Err(format!("Login failed (status {})", status))
     }
 }
 
