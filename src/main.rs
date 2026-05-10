@@ -143,7 +143,6 @@ async fn main() {
 
     Dispatcher::builder(bot, handler)
         .dependencies(dptree::deps![Arc::clone(&state)])
-        .enable_ctrlc_handler()
         .build()
         .dispatch()
         .await;
