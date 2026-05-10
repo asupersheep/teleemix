@@ -1,0 +1,103 @@
+use std::sync::Arc;
+
+use reqwest::Client;
+use serde_json::Value;
+
+use crate::BotState;
+
+pub async fn login(state: &Arc<BotState>) {
+    if state.config.deemix_arl.is_empty() {
+        log::warn!("DEEMIX_ARL not set — bot may get NotLoggedIn errors.");
+        return;
+    }
+    match login_arl(state, &state.config.deemix_arl.clone()).await {
+        Ok(username) => log::info!("Logged into deemix as {}", username),
+        Err(e) => log::warn!("Could not login to deemix: {}", e),
+    }
+}
+
+pub async fn login_arl(state: &Arc<BotState>, arl: &str) -> Result<String, String> {
+    let url = format!("{}/api/loginArl", state.config.deemix_url);
+    let resp = state
+        .http
+        .post(&url)
+        .json(&serde_json::json!({ "arl": arl }))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let data: Value = resp.json().await.map_err(|e| e.to_string())?;
+
+    if data["status"] == 1 {
+        let username = data["user"]["name"]
+            .as_str()
+            .unwrap_or("unknown")
+            .to_string();
+        Ok(username)
+    } else {
+        Err(format!("{}", data))
+    }
+}
+
+pub async fn add_to_queue(state: &Arc<BotState>, url: &str) -> Result<(), String> {
+    let endpoint = format!("{}/api/addToQueue", state.config.deemix_url);
+    let resp = state
+        .http
+        .post(&endpoint)
+        .json(&serde_json::json!({ "url": url, "bitrate": 9 }))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let data: Value = resp.json().await.map_err(|e| e.to_string())?;
+
+    if data["result"].as_bool().unwrap_or(false) {
+        Ok(())
+    } else {
+        Err(data["errid"]
+            .as_str()
+            .unwrap_or("Unknown error")
+            .to_string())
+    }
+}
+
+pub async fn get_queue(state: &Arc<BotState>) -> Result<usize, String> {
+    let url = format!("{}/api/getQueue", state.config.deemix_url);
+    let resp = state
+        .http
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let data: Value = resp.json().await.map_err(|e| e.to_string())?;
+    let queue = data["queue"].as_object();
+    Ok(queue.map(|q| q.len()).unwrap_or(0))
+}
+
+pub async fn search(
+    state: &Arc<BotState>,
+    query: &str,
+    search_type: &str,
+) -> Result<Vec<Value>, String> {
+    let url = format!("{}/api/search", state.config.deemix_url);
+    let resp = state
+        .http
+        .get(&url)
+        .query(&[("term", query), ("type", search_type)])
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let data: Value = resp.json().await.map_err(|e| e.to_string())?;
+
+    let results = data["data"]
+        .as_array()
+        .or_else(|| {
+            data["results"]["data"].as_array()
+        })
+        .cloned()
+        .unwrap_or_default();
+
+    Ok(results.into_iter().take(8).collect())
+}
