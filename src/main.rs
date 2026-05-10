@@ -40,6 +40,7 @@ pub struct Config {
     pub compose_file: String,
     pub service_name: String,
     pub env_file: String,
+    pub registered_users_file: String,
 }
 
 impl Config {
@@ -59,6 +60,8 @@ impl Config {
                 .unwrap_or_else(|_| "teleemix".to_string()),
             env_file: env::var("ENV_FILE")
                 .unwrap_or_else(|_| "/app/.env".to_string()),
+            registered_users_file: env::var("REGISTERED_USERS_FILE")
+                .unwrap_or_else(|_| "/app/registered_users.txt".to_string()),
         }
     }
 
@@ -107,6 +110,8 @@ enum Command {
     Album,
     #[command(description = "Download from a Spotify link")]
     Sp,
+    #[command(description = "Register to receive bot notifications")]
+    Register,
     #[command(description = "Show quick action buttons")]
     Menu,
     #[command(description = "Update Deezer ARL")]
@@ -114,6 +119,24 @@ enum Command {
 }
 
 // ── URL Patterns ──────────────────────────────────────────────────────────────
+
+
+fn load_registered_users(path: &str) -> Vec<i64> {
+    std::fs::read_to_string(path)
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|l| l.trim().parse::<i64>().ok())
+        .collect()
+}
+
+fn save_registered_user(path: &str, chat_id: i64) {
+    let mut users = load_registered_users(path);
+    if !users.contains(&chat_id) {
+        users.push(chat_id);
+        let content = users.iter().map(|u| u.to_string()).collect::<Vec<_>>().join("\n");
+        let _ = std::fs::write(path, content);
+    }
+}
 
 lazy_static::lazy_static! {
     static ref DEEZER_URL_RE: Regex = Regex::new(
@@ -147,6 +170,18 @@ async fn main() {
     deemix::login(&state).await;
 
     log::info!("Teleemix bot starting...");
+
+    // Send startup notification to all registered users
+    {
+        let startup_msg = "🎵 Teleemix is ready!\n\nJust send me any song name, Deezer URL, or Spotify link and I'll handle it.\n\n📲 Tap /menu for quick action buttons.";
+        let registered = load_registered_users(&state.config.registered_users_file);
+        for chat_id in registered {
+            let _ = bot.send_message(
+                teloxide::types::ChatId(chat_id),
+                startup_msg,
+            ).await;
+        }
+    }
 
     let storage = InMemStorage::<State>::new();
 
@@ -197,10 +232,18 @@ async fn handle_command(
     }
 
     match cmd {
-        Command::Start | Command::Help => {
+        Command::Start => {
             bot.send_message(
                 msg.chat.id,
-                "🎵 Teleemix\n\nSend me any of these:\n• A Deezer URL — queued instantly\n• A Spotify track/album link — looked up and queued\n• Any song or artist name — search and pick\n\nCommands:\n/dl <deezer url> — queue a download\n/search <song> — search tracks\n/album <name> — search albums\n/status — check deemix\n/updatearl — update your Deezer ARL (interactive)",
+                "👋 Hey! I'm Teleemix — your personal music download assistant.\n\nJust send me a song name, a Deezer link, or a Spotify link and I'll find it and queue it for download on your server. No technical stuff needed!\n\n📲 Use /menu to see quick action buttons.\n🔔 Use /register so I can notify you when I restart.\n\nFor a full list of what I can do, type /help.",
+            )
+            .await?;
+        }
+
+        Command::Help => {
+            bot.send_message(
+                msg.chat.id,
+                "ℹ️ Teleemix — Full Guide\n\n🎵 What I do:\nI connect to your personal deemix server and queue music downloads for you. Just tell me what you want!\n\n📥 Ways to request music:\n• Type any song or artist name → I search and show results to pick from\n• Send a Deezer link (track, album, playlist) → queued instantly\n• Send a Spotify link (track or album) → I find it on Deezer and queue it\n\n🔧 All commands:\n/menu — button menu for quick actions\n/search — search for a track by name\n/album — search for an album by name\n/dl — queue from a Deezer URL\n/sp — queue from a Spotify link\n/status — check if deemix is online and queue size\n/register — get notified when the bot restarts\n/updatearl — update the Deezer login token when it expires\n\n💡 Tip: You don't need commands at all — just send a song name or link!",
             )
             .await?;
         }
@@ -245,6 +288,13 @@ async fn handle_command(
             bot.send_message(msg.chat.id, "🟢 Send me a Spotify track or album link:").await?;
         }
 
+        Command::Register => {
+            let chat_id = msg.chat.id.0;
+            let path = state.config.registered_users_file.clone();
+            save_registered_user(&path, chat_id);
+            bot.send_message(msg.chat.id, "✅ Registered! You will receive notifications when the bot restarts.").await?;
+        }
+
         Command::Menu => {
             let keyboard = KeyboardMarkup::new(vec![
                 vec![
@@ -258,6 +308,10 @@ async fn handle_command(
                 vec![
                     KeyboardButton::new("📊 Check deemix status"),
                     KeyboardButton::new("🔑 Update ARL"),
+                ],
+                vec![
+                    KeyboardButton::new("🔔 Register for notifications"),
+                    KeyboardButton::new("ℹ️ Help"),
                 ],
             ])
             .resize_keyboard(true);
@@ -420,6 +474,20 @@ async fn handle_message(
         "🔑 Update ARL" => {
             dialogue.update(State::AwaitingArl).await.ok();
             bot.send_message(msg.chat.id, "Please send your new Deezer ARL:").await?;
+            return Ok(());
+        }
+        "🔔 Register for notifications" => {
+            let chat_id = msg.chat.id.0;
+            let path = state.config.registered_users_file.clone();
+            save_registered_user(&path, chat_id);
+            bot.send_message(msg.chat.id, "✅ Registered! You will receive a notification when the bot restarts.").await?;
+            return Ok(());
+        }
+        "ℹ️ Help" => {
+            bot.send_message(
+                msg.chat.id,
+                "ℹ️ Teleemix — Full Guide\n\n🎵 What I do:\nI connect to your personal deemix server and queue music downloads for you. Just tell me what you want!\n\n📥 Ways to request music:\n• Type any song or artist name → I search and show results to pick from\n• Send a Deezer link (track, album, playlist) → queued instantly\n• Send a Spotify link (track or album) → I find it on Deezer and queue it\n\n🔧 All commands:\n/menu — button menu for quick actions\n/search — search for a track by name\n/album — search for an album by name\n/dl — queue from a Deezer URL\n/sp — queue from a Spotify link\n/status — check if deemix is online and queue size\n/register — get notified when the bot restarts\n/updatearl — update the Deezer login token when it expires\n\n💡 Tip: You don't need commands at all — just send a song name or link!",
+            ).await?;
             return Ok(());
         }
         _ => {}
