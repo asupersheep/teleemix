@@ -243,7 +243,7 @@ async fn handle_command(
             bot.send_message(msg.chat.id, "🟢 Send me a Spotify track or album link:").await?;
         }
 
-        Command::Updatearl(_) => {
+        Command::Updatearl => {
             if !state.config.is_allowed(msg.from().map(|u| u.id.0).unwrap_or(0)) {
                 bot.send_message(msg.chat.id, "⛔ Not authorised.").await?;
                 return Ok(());
