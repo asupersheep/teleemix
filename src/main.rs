@@ -59,9 +59,13 @@ pub struct BotState {
 
 impl BotState {
     pub fn new(config: Config) -> Self {
+        let http = Client::builder()
+            .cookie_store(true)  // persist connect.sid across requests
+            .build()
+            .expect("Failed to build HTTP client");
         Self {
             config: Arc::new(config),
-            http: Client::new(),
+            http,
         }
     }
 }
