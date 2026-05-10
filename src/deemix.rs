@@ -63,7 +63,13 @@ pub async fn add_to_queue(state: &Arc<BotState>, url: &str) -> Result<(), String
     }
 }
 
-pub async fn get_queue(state: &Arc<BotState>) -> Result<usize, String> {
+pub struct QueueStatus {
+    pub pending: usize,
+    pub downloading: usize,
+    pub done: usize,
+}
+
+pub async fn get_queue(state: &Arc<BotState>) -> Result<QueueStatus, String> {
     let url = format!("{}/api/getQueue", state.config.deemix_url);
     let resp = state
         .http
@@ -73,8 +79,26 @@ pub async fn get_queue(state: &Arc<BotState>) -> Result<usize, String> {
         .map_err(|e| e.to_string())?;
 
     let data: Value = resp.json().await.map_err(|e| e.to_string())?;
-    let queue = data["queue"].as_object();
-    Ok(queue.map(|q| q.len()).unwrap_or(0))
+    let mut pending = 0usize;
+    let mut downloading = 0usize;
+    let mut done = 0usize;
+
+    if let Some(queue) = data["queue"].as_object() {
+        for item in queue.values() {
+            let progress = item["progress"].as_u64().unwrap_or(0);
+            let downloaded = item["downloaded"].as_u64().unwrap_or(0);
+            let size = item["size"].as_u64().unwrap_or(1);
+            if downloaded >= size && size > 0 {
+                done += 1;
+            } else if progress > 0 {
+                downloading += 1;
+            } else {
+                pending += 1;
+            }
+        }
+    }
+
+    Ok(QueueStatus { pending, downloading, done })
 }
 
 pub async fn search(

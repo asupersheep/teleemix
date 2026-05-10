@@ -250,12 +250,21 @@ async fn handle_command(
 
         Command::Status => {
             match deemix::get_queue(&state).await {
-                Ok(count) => {
-                    bot.send_message(
-                        msg.chat.id,
-                        format!("✅ Deemix is reachable\n📥 Items in queue: {}", count),
-                    )
-                    .await?;
+                Ok(q) => {
+                    let mut msg_text = "✅ Deemix is reachable\n".to_string();
+                    if q.downloading > 0 {
+                        msg_text.push_str(&format!("⬇️ Downloading: {}\n", q.downloading));
+                    }
+                    if q.pending > 0 {
+                        msg_text.push_str(&format!("⏳ Pending: {}\n", q.pending));
+                    }
+                    if q.done > 0 {
+                        msg_text.push_str(&format!("✅ Completed (in queue): {}", q.done));
+                    }
+                    if q.downloading == 0 && q.pending == 0 && q.done == 0 {
+                        msg_text.push_str("📭 Queue is empty");
+                    }
+                    bot.send_message(msg.chat.id, msg_text).await?;
                 }
                 Err(e) => {
                     bot.send_message(msg.chat.id, format!("❌ Can't reach deemix: {}", e))
@@ -461,9 +470,16 @@ async fn handle_message(
         }
         "📊 Check deemix status" => {
             match deemix::get_queue(&state).await {
-                Ok(count) => {
-                    bot.send_message(msg.chat.id, format!("✅ Deemix is reachable
-📥 Items in queue: {}", count)).await?;
+                Ok(q) => {
+                    let mut msg_text = "✅ Deemix is reachable
+".to_string();
+                    if q.downloading > 0 { msg_text.push_str(&format!("⬇️ Downloading: {}
+", q.downloading)); }
+                    if q.pending > 0 { msg_text.push_str(&format!("⏳ Pending: {}
+", q.pending)); }
+                    if q.done > 0 { msg_text.push_str(&format!("✅ Completed (in queue): {}", q.done)); }
+                    if q.downloading == 0 && q.pending == 0 && q.done == 0 { msg_text.push_str("📭 Queue is empty"); }
+                    bot.send_message(msg.chat.id, msg_text).await?;
                 }
                 Err(e) => {
                     bot.send_message(msg.chat.id, format!("❌ Can't reach deemix: {}", e)).await?;
