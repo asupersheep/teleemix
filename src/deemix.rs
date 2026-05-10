@@ -11,7 +11,7 @@ pub async fn login(state: &Arc<BotState>) {
         return;
     }
     match login_arl(state, &state.config.deemix_arl.clone()).await {
-        Ok(username) => log::info!("Logged into deemix as {}", username),
+        Ok(username) => log::info!("Successfully logged into deemix"),
         Err(e) => log::warn!("Could not login to deemix: {}", e),
     }
 }
