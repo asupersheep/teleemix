@@ -44,7 +44,7 @@ Supports Deezer URLs, Spotify links, and free-text search.
 
 ### 2. Get your Deezer ARL
 
-For step-by-step instructions on how to find your Deezer ARL token in your browser, see this guide: [How to Get Your Deezer ARL](https://www.dumpmedia.com/deezplus/deezer-arl.html). Alternatively, a clean browser-based guide is available [here](https://github.com/nathom/streamrip/wiki/Finding-Your-Deezer-ARL-Cookie).
+For step-by-step instructions on how to find your Deezer ARL token in your browser, see this guide: [How to Get Your Deezer ARL](https://github.com/nathom/streamrip/wiki/Finding-Your-Deezer-ARL-Cookie).
 
 The ARL lasts several months. When it expires, use `/updatearl` in Telegram to update it without touching the server.
 
