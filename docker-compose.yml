@@ -1,14 +1,17 @@
 services:
   teleemix:
-    image: ghcr.io/asupersheep/teleemix:latest  # change to :dev for experimental
+    image: ghcr.io/asupersheep/teleemix:latest
     container_name: teleemix
     restart: unless-stopped
     network_mode: host
     volumes:
       # Update the left side to point to your docker-compose file on the host.
-      # This allows the /updatearl command to persist ARL changes across restarts.
+      # This allows the /updatearl command to trigger container rebuilds.
       - /path/to/your/docker-compose.yml:/compose/docker-compose.yml
+      # Mount your .env file so /updatearl can persist the new ARL across restarts.
+      # Update the left side to point to your actual .env file on the host.
+      - /path/to/your/.env:/app/.env
       # Allows the bot to trigger container rebuilds via Docker
       - /var/run/docker.sock:/var/run/docker.sock
     env_file:
-      - .env
+      - /path/to/your/.env

@@ -24,6 +24,7 @@ pub struct Config {
     pub allowed_users: Vec<u64>,
     pub compose_file: String,
     pub service_name: String,
+    pub env_file: String,
 }
 
 impl Config {
@@ -41,6 +42,8 @@ impl Config {
                 .unwrap_or_else(|_| "/compose/docker-compose.yml".to_string()),
             service_name: env::var("SERVICE_NAME")
                 .unwrap_or_else(|_| "teleemix".to_string()),
+            env_file: env::var("ENV_FILE")
+                .unwrap_or_else(|_| "/app/.env".to_string()),
         }
     }
 
@@ -528,19 +531,19 @@ async fn handle_updatearl(
             )
             .await?;
 
-            // Update compose file
-            let compose_path = &state.config.compose_file;
-            match std::fs::read_to_string(compose_path) {
+            // Update .env file
+            let env_path = &state.config.env_file;
+            match std::fs::read_to_string(env_path) {
                 Ok(contents) => {
-                    let updated = regex::Regex::new(r"- DEEMIX_ARL=.*")
+                    let updated = regex::Regex::new(r"DEEMIX_ARL=.*")
                         .unwrap()
-                        .replace(&contents, format!("- DEEMIX_ARL={}", arl))
+                        .replace(&contents, format!("DEEMIX_ARL={}", arl))
                         .to_string();
-                    if let Err(e) = std::fs::write(compose_path, updated) {
+                    if let Err(e) = std::fs::write(env_path, &updated) {
                         bot.edit_message_text(
                             msg.chat.id,
                             sent.id,
-                            format!("⚠️ Logged in OK but could not update compose file: {}", e),
+                            format!("⚠️ Logged in OK but could not update .env file: {}", e),
                         )
                         .await?;
                         return Ok(());
@@ -550,7 +553,7 @@ async fn handle_updatearl(
                     bot.edit_message_text(
                         msg.chat.id,
                         sent.id,
-                        format!("⚠️ Logged in OK but could not read compose file: {}", e),
+                        format!("⚠️ Logged in OK but could not read .env file: {}", e),
                     )
                     .await?;
                     return Ok(());
