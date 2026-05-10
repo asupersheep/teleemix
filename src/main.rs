@@ -8,7 +8,7 @@ use serde_json::{json, Value};
 use teloxide::{
     dispatching::{dialogue::InMemStorage, UpdateHandler},
     prelude::*,
-    types::{InlineKeyboardButton, InlineKeyboardMarkup, ParseMode},
+    types::{InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, KeyboardMarkup, ParseMode},
     utils::command::BotCommands,
 };
 
@@ -107,6 +107,8 @@ enum Command {
     Album,
     #[command(description = "Download from a Spotify link")]
     Sp,
+    #[command(description = "Show quick action buttons")]
+    Menu,
     #[command(description = "Update Deezer ARL")]
     Updatearl,
 }
@@ -243,6 +245,28 @@ async fn handle_command(
             bot.send_message(msg.chat.id, "🟢 Send me a Spotify track or album link:").await?;
         }
 
+        Command::Menu => {
+            let keyboard = KeyboardMarkup::new(vec![
+                vec![
+                    KeyboardButton::new("🔍 Search a track"),
+                    KeyboardButton::new("💿 Search an album"),
+                ],
+                vec![
+                    KeyboardButton::new("🟢 From Spotify link"),
+                    KeyboardButton::new("🎵 From Deezer URL"),
+                ],
+                vec![
+                    KeyboardButton::new("📊 Check deemix status"),
+                    KeyboardButton::new("🔑 Update ARL"),
+                ],
+            ])
+            .resize_keyboard(true);
+
+            bot.send_message(msg.chat.id, "Choose an action:")
+                .reply_markup(keyboard)
+                .await?;
+        }
+
         Command::Updatearl => {
             if !state.config.is_allowed(msg.from().map(|u| u.id.0).unwrap_or(0)) {
                 bot.send_message(msg.chat.id, "⛔ Not authorised.").await?;
@@ -347,6 +371,7 @@ async fn handle_message(
     bot: Bot,
     msg: Message,
     state: Arc<BotState>,
+    dialogue: MyDialogue,
 ) -> ResponseResult<()> {
     let user_id = msg.from().map(|u| u.id.0).unwrap_or(0);
     if !state.config.is_allowed(user_id) {
@@ -357,6 +382,48 @@ async fn handle_message(
         Some(t) => t.trim().to_string(),
         None => return Ok(()),
     };
+
+    // Keyboard button presses
+    match text.as_str() {
+        "🔍 Search a track" => {
+            dialogue.update(State::AwaitingSearch).await.ok();
+            bot.send_message(msg.chat.id, "🔍 What song or artist are you looking for?").await?;
+            return Ok(());
+        }
+        "💿 Search an album" => {
+            dialogue.update(State::AwaitingAlbum).await.ok();
+            bot.send_message(msg.chat.id, "💿 What album are you looking for?").await?;
+            return Ok(());
+        }
+        "🟢 From Spotify link" => {
+            dialogue.update(State::AwaitingSpotify).await.ok();
+            bot.send_message(msg.chat.id, "🟢 Send me a Spotify track or album link:").await?;
+            return Ok(());
+        }
+        "🎵 From Deezer URL" => {
+            dialogue.update(State::AwaitingDl).await.ok();
+            bot.send_message(msg.chat.id, "🎵 Send me a Deezer URL:").await?;
+            return Ok(());
+        }
+        "📊 Check deemix status" => {
+            match deemix::get_queue(&state).await {
+                Ok(count) => {
+                    bot.send_message(msg.chat.id, format!("✅ Deemix is reachable
+📥 Items in queue: {}", count)).await?;
+                }
+                Err(e) => {
+                    bot.send_message(msg.chat.id, format!("❌ Can't reach deemix: {}", e)).await?;
+                }
+            }
+            return Ok(());
+        }
+        "🔑 Update ARL" => {
+            dialogue.update(State::AwaitingArl).await.ok();
+            bot.send_message(msg.chat.id, "Please send your new Deezer ARL:").await?;
+            return Ok(());
+        }
+        _ => {}
+    }
 
     // Spotify URL
     if SPOTIFY_TRACK_RE.is_match(&text) || SPOTIFY_ALBUM_RE.is_match(&text) {
