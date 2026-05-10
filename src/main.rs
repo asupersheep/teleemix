@@ -15,6 +15,21 @@ use teloxide::{
 mod spotify;
 mod deemix;
 
+// ── Dialogue State ────────────────────────────────────────────────────────────
+
+#[derive(Clone, Default, Debug)]
+pub enum State {
+    #[default]
+    Idle,
+    AwaitingArl,
+    AwaitingSearch,
+    AwaitingAlbum,
+    AwaitingDl,
+    AwaitingSpotify,
+}
+
+type MyDialogue = Dialogue<State, InMemStorage<State>>;
+
 // ── Config ────────────────────────────────────────────────────────────────────
 
 #[derive(Clone)]
@@ -84,14 +99,16 @@ enum Command {
     Help,
     #[command(description = "Check deemix status")]
     Status,
-    #[command(description = "Queue a Deezer URL: /dl <url>")]
-    Dl(String),
-    #[command(description = "Search for a track: /search <query>")]
-    Search(String),
-    #[command(description = "Search for an album: /album <query>")]
-    Album(String),
-    #[command(description = "Update Deezer ARL: /updatearl <arl>")]
-    Updatearl(String),
+    #[command(description = "Queue a Deezer URL")]
+    Dl,
+    #[command(description = "Search for a track")]
+    Search,
+    #[command(description = "Search for an album")]
+    Album,
+    #[command(description = "Download from a Spotify link")]
+    Sp,
+    #[command(description = "Update Deezer ARL")]
+    Updatearl,
 }
 
 // ── URL Patterns ──────────────────────────────────────────────────────────────
@@ -129,15 +146,26 @@ async fn main() {
 
     log::info!("Teleemix bot starting...");
 
+    let storage = InMemStorage::<State>::new();
+
     let handler = dptree::entry()
         .branch(
             Update::filter_message()
-                .filter_command::<Command>()
-                .endpoint(handle_command),
-        )
-        .branch(
-            Update::filter_message()
-                .endpoint(handle_message),
+                .enter_dialogue::<Message, InMemStorage<State>, State>()
+                .branch(dptree::case![State::AwaitingArl].endpoint(receive_arl))
+                .branch(dptree::case![State::AwaitingSearch].endpoint(receive_search))
+                .branch(dptree::case![State::AwaitingAlbum].endpoint(receive_album))
+                .branch(dptree::case![State::AwaitingDl].endpoint(receive_dl))
+                .branch(dptree::case![State::AwaitingSpotify].endpoint(receive_spotify))
+                .branch(
+                    Update::filter_message()
+                        .filter_command::<Command>()
+                        .endpoint(handle_command),
+                )
+                .branch(
+                    Update::filter_message()
+                        .endpoint(handle_message),
+                ),
         )
         .branch(
             Update::filter_callback_query()
@@ -145,7 +173,7 @@ async fn main() {
         );
 
     Dispatcher::builder(bot, handler)
-        .dependencies(dptree::deps![Arc::clone(&state)])
+        .dependencies(dptree::deps![Arc::clone(&state), storage])
         .build()
         .dispatch()
         .await;
@@ -158,6 +186,7 @@ async fn handle_command(
     msg: Message,
     cmd: Command,
     state: Arc<BotState>,
+    dialogue: MyDialogue,
 ) -> ResponseResult<()> {
     let user_id = msg.from().map(|u| u.id.0).unwrap_or(0);
     if !state.config.is_allowed(user_id) {
@@ -169,7 +198,7 @@ async fn handle_command(
         Command::Start | Command::Help => {
             bot.send_message(
                 msg.chat.id,
-                "🎵 Teleemix\n\nSend me any of these:\n• A Deezer URL — queued instantly\n• A Spotify track/album link — looked up and queued\n• Any song or artist name — search and pick\n\nCommands:\n/dl <deezer url> — queue a download\n/search <song> — search tracks\n/album <name> — search albums\n/status — check deemix\n/updatearl <arl> — update your Deezer ARL",
+                "🎵 Teleemix\n\nSend me any of these:\n• A Deezer URL — queued instantly\n• A Spotify track/album link — looked up and queued\n• Any song or artist name — search and pick\n\nCommands:\n/dl <deezer url> — queue a download\n/search <song> — search tracks\n/album <name> — search albums\n/status — check deemix\n/updatearl — update your Deezer ARL (interactive)",
             )
             .await?;
         }
@@ -190,40 +219,38 @@ async fn handle_command(
             }
         }
 
-        Command::Dl(url) => {
-            if url.is_empty() {
-                bot.send_message(msg.chat.id, "Usage: /dl <deezer url>")
-                    .await?;
-                return Ok(());
-            }
-            queue_url(&bot, &msg, &state, &url).await?;
+        Command::Dl => {
+            dialogue.update(State::AwaitingDl).await
+                .map_err(|e| teloxide::RequestError::Api(teloxide::ApiError::Unknown(e.to_string())))?;
+            bot.send_message(msg.chat.id, "🎵 Send me a Deezer URL:").await?;
         }
 
-        Command::Search(query) => {
-            if query.is_empty() {
-                bot.send_message(msg.chat.id, "Usage: /search <song name>")
-                    .await?;
-                return Ok(());
-            }
-            do_search(&bot, &msg, &state, &query, "track").await?;
+        Command::Search => {
+            dialogue.update(State::AwaitingSearch).await
+                .map_err(|e| teloxide::RequestError::Api(teloxide::ApiError::Unknown(e.to_string())))?;
+            bot.send_message(msg.chat.id, "🔍 What song or artist are you looking for?").await?;
         }
 
-        Command::Album(query) => {
-            if query.is_empty() {
-                bot.send_message(msg.chat.id, "Usage: /album <album name>")
-                    .await?;
-                return Ok(());
-            }
-            do_search(&bot, &msg, &state, &query, "album").await?;
+        Command::Album => {
+            dialogue.update(State::AwaitingAlbum).await
+                .map_err(|e| teloxide::RequestError::Api(teloxide::ApiError::Unknown(e.to_string())))?;
+            bot.send_message(msg.chat.id, "💿 What album are you looking for?").await?;
         }
 
-        Command::Updatearl(arl) => {
-            if arl.len() < 100 {
-                bot.send_message(msg.chat.id, "❌ That ARL looks too short, double check it.")
-                    .await?;
+        Command::Sp => {
+            dialogue.update(State::AwaitingSpotify).await
+                .map_err(|e| teloxide::RequestError::Api(teloxide::ApiError::Unknown(e.to_string())))?;
+            bot.send_message(msg.chat.id, "🟢 Send me a Spotify track or album link:").await?;
+        }
+
+        Command::Updatearl(_) => {
+            if !state.config.is_allowed(msg.from().map(|u| u.id.0).unwrap_or(0)) {
+                bot.send_message(msg.chat.id, "⛔ Not authorised.").await?;
                 return Ok(());
             }
-            handle_updatearl(&bot, &msg, &state, &arl).await?;
+            dialogue.update(State::AwaitingArl).await
+                .map_err(|e| teloxide::RequestError::Api(teloxide::ApiError::Unknown(e.to_string())))?;
+            bot.send_message(msg.chat.id, "Please send your new Deezer ARL:").await?;
         }
     }
 
@@ -231,6 +258,90 @@ async fn handle_command(
 }
 
 // ── Message Handler ───────────────────────────────────────────────────────────
+
+
+
+async fn receive_search(
+    bot: Bot,
+    msg: Message,
+    state: Arc<BotState>,
+    dialogue: MyDialogue,
+) -> ResponseResult<()> {
+    dialogue.exit().await.ok();
+    if let Some(query) = msg.text() {
+        do_search(&bot, &msg, &state, query.trim(), "track").await?;
+    }
+    Ok(())
+}
+
+async fn receive_album(
+    bot: Bot,
+    msg: Message,
+    state: Arc<BotState>,
+    dialogue: MyDialogue,
+) -> ResponseResult<()> {
+    dialogue.exit().await.ok();
+    if let Some(query) = msg.text() {
+        do_search(&bot, &msg, &state, query.trim(), "album").await?;
+    }
+    Ok(())
+}
+
+async fn receive_dl(
+    bot: Bot,
+    msg: Message,
+    state: Arc<BotState>,
+    dialogue: MyDialogue,
+) -> ResponseResult<()> {
+    dialogue.exit().await.ok();
+    if let Some(url) = msg.text() {
+        queue_url(&bot, &msg, &state, url.trim()).await?;
+    }
+    Ok(())
+}
+
+async fn receive_spotify(
+    bot: Bot,
+    msg: Message,
+    state: Arc<BotState>,
+    dialogue: MyDialogue,
+) -> ResponseResult<()> {
+    dialogue.exit().await.ok();
+    if let Some(url) = msg.text() {
+        handle_spotify(&bot, &msg, &state, url.trim()).await?;
+    }
+    Ok(())
+}
+
+async fn receive_arl(
+    bot: Bot,
+    msg: Message,
+    state: Arc<BotState>,
+    dialogue: MyDialogue,
+) -> ResponseResult<()> {
+    let user_id = msg.from().map(|u| u.id.0).unwrap_or(0);
+    if !state.config.is_allowed(user_id) {
+        dialogue.exit().await.ok();
+        return Ok(());
+    }
+
+    let arl = match msg.text() {
+        Some(t) => t.trim().to_string(),
+        None => {
+            bot.send_message(msg.chat.id, "Please send the ARL as text.").await?;
+            return Ok(());
+        }
+    };
+
+    if arl.len() < 100 {
+        bot.send_message(msg.chat.id, "❌ That ARL looks too short, double check it. Try again:").await?;
+        return Ok(());
+    }
+
+    dialogue.exit().await.ok();
+    handle_updatearl(&bot, &msg, &state, &arl).await?;
+    Ok(())
+}
 
 async fn handle_message(
     bot: Bot,
