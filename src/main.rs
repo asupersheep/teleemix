@@ -563,19 +563,13 @@ async fn handle_updatearl(
             bot.edit_message_text(
                 msg.chat.id,
                 sent.id,
-                "✅ Compose file updated\n🔄 Rebuilding container... (bot will restart)",
+                "✅ ARL updated and saved! Downloads will use the new ARL immediately.",
             )
             .await?;
 
             // Trigger rebuild detached
-            let service = state.config.service_name.clone();
-            let compose = state.config.compose_file.clone();
-            tokio::spawn(async move {
-                tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-                let _ = std::process::Command::new("docker")
-                    .args(["compose", "-f", &compose, "up", "-d", "--build", &service])
-                    .spawn();
-            });
+            // No restart needed — bot already re-logged into deemix in memory above.
+            // .env file was updated so the new ARL persists across future restarts.
         }
         Err(e) => {
             bot.edit_message_text(
