@@ -15,9 +15,12 @@ Supports Deezer URLs, Spotify links, and free-text search.
 - 🎵 Send a **Deezer URL** (track, album, playlist) → queued instantly
 - 🟢 Send a **Spotify link** (track or album) → looked up and queued automatically
 - 🔍 Send a **song or artist name** → search results shown as buttons to pick from
+- 🎤 Send a **voice note** → transcribe what you said and search (requires OpenAI key)
+- 🎵 Send a **voice recording of a song** → identify it and queue it (requires AudD key)
 - 📲 `/menu` — quick action keyboard buttons
+- ⚙️ `/settings` — per-user settings with toggle buttons
 - 💿 `/album` — search albums
-- 🔔 `/register` — get notified when the bot restarts
+- 🔔 Restart notifications — opt-in per user via /settings
 - 🔄 `/updatearl` — update your Deezer ARL interactively via Telegram
 - 📊 `/status` — shows pending, downloading, and completed queue items separately
 - 🔒 Optional user allowlist to restrict access
@@ -44,7 +47,7 @@ Supports Deezer URLs, Spotify links, and free-text search.
 
 ### 2. Get your Deezer ARL
 
-For step-by-step instructions on how to find your Deezer ARL token in your browser, see this guide: [How to Get Your Deezer ARL](https://github.com/nathom/streamrip/wiki/Finding-Your-Deezer-ARL-Cookie).
+For step-by-step instructions on how to find your Deezer ARL token in your browser, see this guide: [How to Get Your Deezer ARL](https://www.dumpmedia.com/deezplus/deezer-arl.html). Alternatively, a clean browser-based guide is available [here](https://github.com/nathom/streamrip/wiki/Finding-Your-Deezer-ARL-Cookie).
 
 The ARL lasts several months. When it expires, use `/updatearl` in Telegram to update it without touching the server.
 
@@ -92,10 +95,42 @@ docker compose up -d
 | Search albums | `/album` or tap 💿 Search an album in /menu |
 | Download a Deezer URL | `/dl` |
 | Download from Spotify | `/sp` |
+| Voice search | Send a voice note (if configured) |
+| Song recognition | Send a voice recording (if configured) |
 | Check deemix status | `/status` |
-| Register for notifications | `/register` |
 | Update ARL | `/updatearl` |
+| Personal settings | `/settings` |
 | Show all buttons | `/menu` |
+
+---
+
+## Voice Features (optional)
+
+### Voice Search
+Send a voice note saying a song or artist name. Teleemix transcribes it using OpenAI Whisper and runs a search.
+
+**Requires:** An OpenAI API key (`OPENAI_API_KEY` in `.env`). Sign up at [platform.openai.com](https://platform.openai.com/). Cost is fractions of a cent per request.
+
+### Song Recognition
+Send a voice recording of a song playing. Teleemix identifies it using the AudD API and queues it.
+
+**Requires:** An AudD API key (`AUDD_API_KEY` in `.env`). Free tier gives 100 recognitions/month. Sign up at [audd.io](https://audd.io/).
+
+Both features are **optional** — leave the API keys empty to disable them entirely. Users can also toggle these features individually in `/settings`.
+
+---
+
+## Per-User Settings
+
+Every user has their own settings managed via `/settings`:
+
+| Setting | Default | Description |
+|---|---|---|
+| 🔔 Restart notifications | OFF | Get notified when the bot container restarts |
+| 🎤 Voice search | ON | Transcribe voice notes to search (requires OpenAI key) |
+| 🎵 Song recognition | ON | Identify songs from recordings (requires AudD key) |
+
+Settings are stored in `users.json` and persist across container restarts.
 
 ---
 
@@ -131,21 +166,50 @@ This checks for a new `teleemix` image once a day and updates automatically.
 
 ## Access Control
 
-Set `ALLOWED_USERS` in your `.env` to a comma-separated list of Telegram user IDs:
+Teleemix relies on Telegram's built-in access control rather than maintaining its own allowlist. Since only users who know your bot's username can message it, keeping your bot token private is the main security measure.
 
-```
-ALLOWED_USERS=123456789,987654321
-```
+To restrict access further via @BotFather:
+1. Message [@BotFather](https://t.me/BotFather) → `/mybots` → select your bot
+2. **Bot Settings → Allow Groups** — disable to make it private message only
+3. **Bot Settings → Group Privacy** — controls what the bot can see in groups
 
-Leave empty to allow anyone who messages the bot. Fine for private bots, not recommended if the bot token is shared publicly.
-
-To find your Telegram user ID, message [@userinfobot](https://t.me/userinfobot).
+For more detail see the [Telegram Bot documentation](https://core.telegram.org/bots/features#privacy-mode) and the project wiki.
 
 ---
 
 ## Notifications on restart
 
 Send `/register` to the bot once. From then on, every time the container restarts you will receive a message letting you know the bot is back online.
+
+---
+
+## Voice Features (optional)
+
+### Voice Search
+Send a voice note saying a song or artist name. Teleemix transcribes it using OpenAI Whisper and runs a search.
+
+**Requires:** An OpenAI API key (`OPENAI_API_KEY` in `.env`). Sign up at [platform.openai.com](https://platform.openai.com/). Cost is fractions of a cent per request.
+
+### Song Recognition
+Send a voice recording of a song playing. Teleemix identifies it using the AudD API and queues it.
+
+**Requires:** An AudD API key (`AUDD_API_KEY` in `.env`). Free tier gives 100 recognitions/month. Sign up at [audd.io](https://audd.io/).
+
+Both features are **optional** — leave the API keys empty to disable them entirely. Users can also toggle these features individually in `/settings`.
+
+---
+
+## Per-User Settings
+
+Every user has their own settings managed via `/settings`:
+
+| Setting | Default | Description |
+|---|---|---|
+| 🔔 Restart notifications | OFF | Get notified when the bot container restarts |
+| 🎤 Voice search | ON | Transcribe voice notes to search (requires OpenAI key) |
+| 🎵 Song recognition | ON | Identify songs from recordings (requires AudD key) |
+
+Settings are stored in `users.json` and persist across container restarts.
 
 ---
 
@@ -178,3 +242,9 @@ image: ghcr.io/asupersheep/teleemix:dev
 - [teloxide](https://github.com/teloxide/teloxide) — Telegram bot framework
 - [tokio](https://tokio.rs/) — async runtime
 - [reqwest](https://github.com/seanmonstar/reqwest) — HTTP client
+
+---
+
+## License
+
+MIT

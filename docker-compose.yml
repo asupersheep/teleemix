@@ -5,15 +5,13 @@ services:
     restart: unless-stopped
     network_mode: host
     volumes:
-      # Update the left side to point to your docker-compose file on the host.
-      # This allows the /updatearl command to trigger container rebuilds.
+      # Update left side to point to your docker-compose file on the host.
       - /path/to/your/docker-compose.yml:/compose/docker-compose.yml
-      # Mount your .env file so /updatearl can persist the new ARL across restarts.
-      # Update the left side to point to your actual .env file on the host.
+      # Mount your .env file so /updatearl persists the new ARL.
       - /path/to/your/.env:/app/.env
-      # Persists registered users across container restarts
-      - /path/to/your/data/registered_users.txt:/app/registered_users.txt
-      # Allows the bot to trigger container rebuilds via Docker
+      # Persistent user settings and notification registry.
+      - /path/to/your/data/users.json:/app/users.json
+      # Allows the bot to talk to Docker (for /updatearl restart trigger).
       - /var/run/docker.sock:/var/run/docker.sock
     env_file:
       - /path/to/your/.env
