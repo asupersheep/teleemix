@@ -1,5 +1,7 @@
 use std::env;
 use std::sync::Arc;
+use std::collections::HashMap;
+use tokio::sync::Mutex;
 
 use regex::Regex;
 use reqwest::Client;
@@ -82,6 +84,7 @@ pub struct BotState {
     pub config: Arc<Config>,
     pub http: Client,
     pub users: UsersDb,
+    pub pending_voices: Arc<Mutex<HashMap<String, String>>>, // short_id -> file_id
 }
 
 impl BotState {
@@ -94,6 +97,7 @@ impl BotState {
             config: Arc::new(config),
             http,
             users,
+            pending_voices: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 }
@@ -426,18 +430,25 @@ async fn handle_message(bot: Bot, msg: Message, state: Arc<BotState>, dialogue: 
             return Ok(());
         }
 
+        // Store file_id with a short key to stay under Telegram's 64 byte callback limit
+        let short_id = format!("{}", msg.id.0);
+        {
+            let mut map = state.pending_voices.lock().await;
+            map.insert(short_id.clone(), voice.file.id.to_string());
+        }
+
         // Build choice buttons based on what's enabled
         let mut buttons: Vec<Vec<teloxide::types::InlineKeyboardButton>> = vec![];
         if whisper_on {
             buttons.push(vec![teloxide::types::InlineKeyboardButton::callback(
                 "🎤 Transcribe what I said",
-                format!("voice:transcribe:{}", voice.file.id),
+                format!("vt:{}", short_id),
             )]);
         }
         if audd_on {
             buttons.push(vec![teloxide::types::InlineKeyboardButton::callback(
                 "🎵 Recognize the song",
-                format!("voice:recognize:{}", voice.file.id),
+                format!("vr:{}", short_id),
             )]);
         }
         buttons.push(vec![teloxide::types::InlineKeyboardButton::callback("❌ Cancel", "cancel")]);
