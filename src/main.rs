@@ -3,7 +3,6 @@ use std::sync::Arc;
 
 use regex::Regex;
 use reqwest::Client;
-use serde_json::Value;
 use teloxide::{
     dispatching::dialogue::InMemStorage,
     prelude::*,
@@ -17,7 +16,6 @@ use teloxide::{
 mod spotify;
 mod deemix;
 mod users;
-mod voice;
 mod voice;
 
 use users::{UsersDb, UserSettings};
@@ -49,7 +47,6 @@ pub struct Config {
     pub users_file: String,
     pub audd_api_key: String,
     pub openai_api_key: String,
-    pub whisper_url: String,
     pub whisper_url: String,
 }
 
@@ -721,7 +718,7 @@ async fn handle_updatearl(bot: &Bot, msg: &Message, state: &Arc<BotState>, arl: 
     let sent = bot.send_message(msg.chat.id, "🔄 Validating new ARL...").await?;
 
     match deemix::login_arl(state, arl).await {
-        Ok(username) => {
+        Ok(_username) => {
             bot.edit_message_text(msg.chat.id, sent.id, format!("✅ Logged in!\n🔄 Updating .env file...")).await?;
 
             match std::fs::read_to_string(&state.config.env_file) {
