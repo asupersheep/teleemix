@@ -52,6 +52,8 @@ pub struct Config {
     pub audd_api_key: String,
     pub openai_api_key: String,
     pub whisper_url: String,
+    pub deemix_bitrate: u8,
+    pub deemix_bitrate_lock: bool,
 }
 
 impl Config {
@@ -71,6 +73,8 @@ impl Config {
             audd_api_key: env::var("AUDD_API_KEY").unwrap_or_default(),
             openai_api_key: env::var("OPENAI_API_KEY").unwrap_or_default(),
             whisper_url: env::var("WHISPER_URL").unwrap_or_default(),
+            deemix_bitrate: env::var("DEEMIX_BITRATE").unwrap_or_else(|_| "9".to_string()).parse().unwrap_or(9),
+            deemix_bitrate_lock: env::var("DEEMIX_BITRATE_LOCK").unwrap_or_else(|_| "false".to_string()).to_lowercase() == "true",
         }
     }
 
@@ -87,6 +91,7 @@ pub struct BotState {
     pub http: Client,
     pub users: UsersDb,
     pub pending_voices: Arc<Mutex<HashMap<String, String>>>, // short_id -> file_id
+    pub current_bitrate: Arc<Mutex<u8>>, // runtime-changeable bitrate
 }
 
 impl BotState {
@@ -100,6 +105,7 @@ impl BotState {
             http,
             users,
             pending_voices: Arc::new(Mutex::new(HashMap::new())),
+            current_bitrate: Arc::new(Mutex::new(config.deemix_bitrate)),
         }
     }
 }
@@ -359,7 +365,8 @@ I connect to your personal deemix server and queue music downloads for you. Just
         }
 
         Command::Settings => {
-            let kb = settings_keyboard(&user_settings, &state.config);
+            let current_br = *state.current_bitrate.lock().await;
+    let kb = settings_keyboard(&user_settings, &state.config, current_br);
             bot.send_message(msg.chat.id, "⚙️ Your settings — tap to toggle:").reply_markup(kb).await?;
         }
 
@@ -644,7 +651,8 @@ async fn handle_message(bot: Bot, msg: Message, state: Arc<BotState>, dialogue: 
             return Ok(());
         }
         "⚙️ Settings" => {
-            let kb = settings_keyboard(&user_settings, &state.config);
+            let current_br = *state.current_bitrate.lock().await;
+    let kb = settings_keyboard(&user_settings, &state.config, current_br);
             bot.send_message(msg.chat.id, "⚙️ Your settings — tap to toggle:").reply_markup(kb).await?;
             return Ok(());
         }
@@ -687,7 +695,8 @@ I connect to your personal deemix server and queue music downloads. Just tell me
                 s.restart_notifications = !s.restart_notifications;
             });
             let updated = users::get_or_create(&state.users, user_id_from_msg(&msg));
-            let kb = settings_keyboard(&updated, &state.config);
+            let current_br = *state.current_bitrate.lock().await;
+    let kb = settings_keyboard(&updated, &state.config, current_br);
             let status = if updated.restart_notifications { "ON" } else { "OFF" };
             bot.send_message(msg.chat.id, format!("🔔 Restart notifications: {}", status)).reply_markup(kb).await?;
             return Ok(());
@@ -701,9 +710,40 @@ I connect to your personal deemix server and queue music downloads. Just tell me
                 s.voice_search = !s.voice_search;
             });
             let updated = users::get_or_create(&state.users, user_id_from_msg(&msg));
-            let kb = settings_keyboard(&updated, &state.config);
+            let current_br = *state.current_bitrate.lock().await;
+    let kb = settings_keyboard(&updated, &state.config, current_br);
             let status = if updated.voice_search { "ON" } else { "OFF" };
             bot.send_message(msg.chat.id, format!("🎤 Voice search: {}", status)).reply_markup(kb).await?;
+            return Ok(());
+        }
+        t if t.starts_with("🎚️ Quality:") => {
+            if state.config.deemix_bitrate_lock {
+                bot.send_message(msg.chat.id, "🔒 Download quality is locked by the administrator.").await?;
+                return Ok(());
+            }
+            let new_bitrate = {
+                let mut br = state.current_bitrate.lock().await;
+                *br = next_bitrate(*br);
+                *br
+            };
+            let updated = users::get_or_create(&state.users, user_id_from_msg(&msg));
+            let current_br = new_bitrate;
+            let kb = settings_keyboard(&updated, &state.config, current_br);
+            bot.send_message(
+                msg.chat.id,
+                format!(
+                    "🎚️ Download quality changed to: {}
+
+⚠️ This affects ALL users on this server.",
+                    bitrate_label(new_bitrate)
+                ),
+            )
+            .reply_markup(kb)
+            .await?;
+            return Ok(());
+        }
+        t if t.starts_with("🔒 Quality:") => {
+            bot.send_message(msg.chat.id, "🔒 Download quality is locked by the administrator.").await?;
             return Ok(());
         }
         t if t.starts_with("🎵 Song recognition:") => {
@@ -715,7 +755,8 @@ I connect to your personal deemix server and queue music downloads. Just tell me
                 s.song_recognition = !s.song_recognition;
             });
             let updated = users::get_or_create(&state.users, user_id_from_msg(&msg));
-            let kb = settings_keyboard(&updated, &state.config);
+            let current_br = *state.current_bitrate.lock().await;
+    let kb = settings_keyboard(&updated, &state.config, current_br);
             let status = if updated.song_recognition { "ON" } else { "OFF" };
             bot.send_message(msg.chat.id, format!("🎵 Song recognition: {}", status)).reply_markup(kb).await?;
             return Ok(());
@@ -1038,6 +1079,20 @@ Check /settings or ask your admin to add API keys.",
         .await?;
 
     Ok(())
+}
+
+
+fn bitrate_label(bitrate: u8) -> &'static str {
+    match bitrate {
+        9 => "FLAC (lossless)",
+        3 => "MP3 320kbps",
+        1 => "MP3 128kbps",
+        _ => "Unknown",
+    }
+}
+
+fn next_bitrate(current: u8) -> u8 {
+    match current { 9 => 3, 3 => 1, _ => 9 }
 }
 
 fn capitalize(s: &str) -> String {

@@ -164,6 +164,29 @@ Both features are **optional** — leave keys/URLs empty to disable. Users can t
 
 ---
 
+## Download Quality
+
+The default download quality is set via `DEEMIX_BITRATE` in your `.env`:
+
+| Value | Quality | Requirement |
+|---|---|---|
+| `9` | FLAC (lossless) | Deezer HiFi / Premium+ |
+| `3` | MP3 320kbps | Deezer Premium |
+| `1` | MP3 128kbps | Free accounts |
+
+Users can change the quality on the fly via `/settings` → 🎚️ Quality. Each tap cycles through the options.
+
+> ⚠️ Quality changes in /settings affect **all users** on the server, not just the user making the change.
+
+To lock the quality and prevent users from changing it, set:
+```
+DEEMIX_BITRATE_LOCK=true
+```
+
+When locked, the quality button in /settings shows a 🔒 and tapping it shows a message that it is administrator-locked.
+
+---
+
 ## Per-User Settings
 
 Every user has their own settings managed via `/settings`:
@@ -173,6 +196,7 @@ Every user has their own settings managed via `/settings`:
 | 🔔 Restart notifications | OFF | Get notified when the bot container restarts |
 | 🎤 Voice search | ON | Transcribe voice notes to search (requires OpenAI key) |
 | 🎵 Song recognition | ON | Identify songs from recordings (requires AudD key) |
+| 🎚️ Download quality | env default | Cycle between FLAC, MP3 320, MP3 128 (affects all users) |
 
 Settings are stored in `users.json` and persist across container restarts.
 
@@ -287,6 +311,29 @@ Both features are **optional** — leave keys/URLs empty to disable. Users can t
 
 ---
 
+## Download Quality
+
+The default download quality is set via `DEEMIX_BITRATE` in your `.env`:
+
+| Value | Quality | Requirement |
+|---|---|---|
+| `9` | FLAC (lossless) | Deezer HiFi / Premium+ |
+| `3` | MP3 320kbps | Deezer Premium |
+| `1` | MP3 128kbps | Free accounts |
+
+Users can change the quality on the fly via `/settings` → 🎚️ Quality. Each tap cycles through the options.
+
+> ⚠️ Quality changes in /settings affect **all users** on the server, not just the user making the change.
+
+To lock the quality and prevent users from changing it, set:
+```
+DEEMIX_BITRATE_LOCK=true
+```
+
+When locked, the quality button in /settings shows a 🔒 and tapping it shows a message that it is administrator-locked.
+
+---
+
 ## Per-User Settings
 
 Every user has their own settings managed via `/settings`:
@@ -296,6 +343,7 @@ Every user has their own settings managed via `/settings`:
 | 🔔 Restart notifications | OFF | Get notified when the bot container restarts |
 | 🎤 Voice search | ON | Transcribe voice notes to search (requires OpenAI key) |
 | 🎵 Song recognition | ON | Identify songs from recordings (requires AudD key) |
+| 🎚️ Download quality | env default | Cycle between FLAC, MP3 320, MP3 128 (affects all users) |
 
 Settings are stored in `users.json` and persist across container restarts.
 

@@ -41,11 +41,12 @@ pub async fn login_arl(state: &Arc<BotState>, arl: &str) -> Result<String, Strin
 }
 
 pub async fn add_to_queue(state: &Arc<BotState>, url: &str) -> Result<(), String> {
+    let bitrate = *state.current_bitrate.lock().await;
     let endpoint = format!("{}/api/addToQueue", state.config.deemix_url);
     let resp = state
         .http
         .post(&endpoint)
-        .json(&serde_json::json!({ "url": url, "bitrate": 9 }))
+        .json(&serde_json::json!({ "url": url, "bitrate": bitrate }))
         .send()
         .await
         .map_err(|e| e.to_string())?;
