@@ -657,6 +657,103 @@ async fn handle_callback(bot: Bot, q: CallbackQuery, state: Arc<BotState>) -> Re
         }
     }
 
+    // ── Voice callbacks ──
+    let is_transcribe = data.starts_with("vt:");
+    let is_recognize = data.starts_with("vr:");
+    if is_transcribe || is_recognize {
+        if let Some(msg) = &q.message {
+            let short_id = &data[3..];
+            let action = if is_transcribe { "transcribe" } else { "recognize" };
+
+            // Retrieve file_id from pending_voices map
+            let file_id = {
+                let map = state.pending_voices.lock().await;
+                map.get(short_id).cloned()
+            };
+            let file_id = match file_id {
+                Some(f) => f,
+                None => {
+                    bot.edit_message_text(msg.chat.id, msg.id, "❌ Voice note expired. Please send it again.").await?;
+                    return Ok(());
+                }
+            };
+
+            bot.edit_message_text(msg.chat.id, msg.id, "⏳ Processing voice note...").await?;
+
+            // Download audio from Telegram
+            let file = bot.get_file(&file_id).await
+                .map_err(|e| teloxide::RequestError::Api(teloxide::ApiError::Unknown(e.to_string())))?;
+            let url = format!("https://api.telegram.org/file/bot{}/{}", bot.token(), file.path);
+            let audio_bytes = match state.http.get(&url).send().await {
+                Ok(r) => match r.bytes().await {
+                    Ok(b) => b.to_vec(),
+                    Err(e) => { bot.edit_message_text(msg.chat.id, msg.id, format!("❌ Failed to read audio: {}", e)).await?; return Ok(()); }
+                },
+                Err(e) => { bot.edit_message_text(msg.chat.id, msg.id, format!("❌ Failed to download audio: {}", e)).await?; return Ok(()); }
+            };
+
+            match action {
+                "transcribe" => {
+                    bot.edit_message_text(msg.chat.id, msg.id, "🎤 Transcribing...").await?;
+                    match voice::transcribe(&state.http, audio_bytes, &state.config.openai_api_key, &state.config.whisper_url).await {
+                        Ok(text) if text.is_empty() => {
+                            bot.edit_message_text(msg.chat.id, msg.id, "😕 Could not transcribe anything. Try speaking more clearly.").await?;
+                        }
+                        Ok(text) => {
+                            bot.edit_message_text(msg.chat.id, msg.id, format!("🔍 I heard: "{}"\nSearching...", text)).await?;
+                            let sent = bot.send_message(msg.chat.id, format!("Results for: {}", text)).await?;
+                            match deemix::search(&state, &text, "track").await {
+                                Ok(results) if results.is_empty() => {
+                                    bot.edit_message_text(msg.chat.id, sent.id, format!("😕 No results for: {}", text)).await?;
+                                }
+                                Ok(results) => {
+                                    let mut buttons: Vec<Vec<InlineKeyboardButton>> = results.iter().map(|item| {
+                                        let label = format!("🎵 {} — {}", item["title"].as_str().unwrap_or("?"), item["artist"]["name"].as_str().unwrap_or("?"));
+                                        let label = if label.len() > 60 { format!("{}...", &label[..57]) } else { label };
+                                        vec![InlineKeyboardButton::callback(label, format!("dl:{}", item["link"].as_str().unwrap_or("")))]
+                                    }).collect();
+                                    buttons.push(vec![InlineKeyboardButton::callback("❌ Cancel", "cancel")]);
+                                    bot.edit_message_text(msg.chat.id, sent.id, format!("Results for \"{}\":", text))
+                                        .reply_markup(InlineKeyboardMarkup::new(buttons)).await?;
+                                }
+                                Err(e) => { bot.edit_message_text(msg.chat.id, sent.id, format!("❌ Search failed: {}", e)).await?; }
+                            }
+                        }
+                        Err(e) => { bot.edit_message_text(msg.chat.id, msg.id, format!("❌ Transcription failed: {}", e)).await?; }
+                    }
+                }
+                "recognize" => {
+                    bot.edit_message_text(msg.chat.id, msg.id, "🎵 Recognizing song...").await?;
+                    match voice::recognize(&state.http, audio_bytes, &state.config.audd_api_key).await {
+                        Ok((title, artist)) => {
+                            let query = format!("{} {}", title, artist);
+                            bot.edit_message_text(msg.chat.id, msg.id, format!("🎵 Found: {} — {}\nSearching on Deezer...", title, artist)).await?;
+                            let sent = bot.send_message(msg.chat.id, format!("Results for: {}", query)).await?;
+                            match deemix::search(&state, &query, "track").await {
+                                Ok(results) if results.is_empty() => {
+                                    bot.edit_message_text(msg.chat.id, sent.id, format!("😕 No results on Deezer for: {}", query)).await?;
+                                }
+                                Ok(results) => {
+                                    let mut buttons: Vec<Vec<InlineKeyboardButton>> = results.iter().map(|item| {
+                                        let label = format!("🎵 {} — {}", item["title"].as_str().unwrap_or("?"), item["artist"]["name"].as_str().unwrap_or("?"));
+                                        let label = if label.len() > 60 { format!("{}...", &label[..57]) } else { label };
+                                        vec![InlineKeyboardButton::callback(label, format!("dl:{}", item["link"].as_str().unwrap_or("")))]
+                                    }).collect();
+                                    buttons.push(vec![InlineKeyboardButton::callback("❌ Cancel", "cancel")]);
+                                    bot.edit_message_text(msg.chat.id, sent.id, format!("Results for {} — {}:", title, artist))
+                                        .reply_markup(InlineKeyboardMarkup::new(buttons)).await?;
+                                }
+                                Err(e) => { bot.edit_message_text(msg.chat.id, sent.id, format!("❌ Search failed: {}", e)).await?; }
+                            }
+                        }
+                        Err(e) => { bot.edit_message_text(msg.chat.id, msg.id, format!("❌ Recognition failed: {}", e)).await?; }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
     Ok(())
 }
 
