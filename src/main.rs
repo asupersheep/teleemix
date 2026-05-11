@@ -100,12 +100,13 @@ impl BotState {
             .cookie_store(true)
             .build()
             .expect("Failed to build HTTP client");
+        let default_bitrate = config.deemix_bitrate;
         Self {
             config: Arc::new(config),
             http,
             users,
             pending_voices: Arc::new(Mutex::new(HashMap::new())),
-            current_bitrate: Arc::new(Mutex::new(config.deemix_bitrate)),
+            current_bitrate: Arc::new(Mutex::new(default_bitrate)),
         }
     }
 }
@@ -225,11 +226,17 @@ fn settings_keyboard(s: &UserSettings, config: &Config, bitrate: u8) -> Keyboard
     let notif = if s.restart_notifications { "🔔 Restart notifications: ON" } else { "🔕 Restart notifications: OFF" };
     let voice = if s.voice_search && config.whisper_enabled() { "🎤 Voice search: ON" } else { "🎤 Voice search: OFF" };
     let recog = if s.song_recognition && config.audd_enabled() { "🎵 Song recognition: ON" } else { "🎵 Song recognition: OFF" };
+    let bitrate_btn = if config.deemix_bitrate_lock {
+        format!("🔒 Quality: {} (locked)", bitrate_label(bitrate))
+    } else {
+        format!("🎚️ Quality: {} (tap to change)", bitrate_label(bitrate))
+    };
 
     KeyboardMarkup::new(vec![
         vec![KeyboardButton::new(notif)],
         vec![KeyboardButton::new(voice)],
         vec![KeyboardButton::new(recog)],
+        vec![KeyboardButton::new(bitrate_btn)],
         vec![KeyboardButton::new("🔑 Update ARL")],
         vec![KeyboardButton::new("🔙 Back to menu")],
     ])
