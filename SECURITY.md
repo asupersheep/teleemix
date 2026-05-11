@@ -37,7 +37,11 @@ This policy covers the Teleemix bot code and its Docker image. It does not cover
 
 ## Security considerations for deployers
 
+<<<<<<< HEAD
 - Keep your `TELEGRAM_TOKEN` and `DEEMIX_ARL` private
+=======
+- Keep your `TELEGRAM_TOKEN` and `DEEMIX_ARL` private — anyone with these can control your bot and download music on your account
+>>>>>>> a687b87851bd888ff366c5b69918d5aa5e5111a2
 - Do not expose your deemix instance publicly without authentication
 - Keep your Docker images up to date — use Watchtower or pull regularly
 - The Docker socket mount (`/var/run/docker.sock`) gives the container elevated access — only deploy on trusted infrastructure
