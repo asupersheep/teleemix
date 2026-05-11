@@ -709,7 +709,7 @@ async fn handle_callback(bot: Bot, q: CallbackQuery, state: Arc<BotState>) -> Re
                                 Ok(results) => {
                                     let mut buttons: Vec<Vec<InlineKeyboardButton>> = results.iter().map(|item| {
                                         let label = format!("🎵 {} — {}", item["title"].as_str().unwrap_or("?"), item["artist"]["name"].as_str().unwrap_or("?"));
-                                        let label = if label.len() > 60 { format!("{}...", &label[..57]) } else { label };
+                                        let label = if label.chars().count() > 60 { format!("{}...", label.chars().take(57).collect::<String>()) } else { label };
                                         vec![InlineKeyboardButton::callback(label, format!("dl:{}", item["link"].as_str().unwrap_or("")))]
                                     }).collect();
                                     buttons.push(vec![InlineKeyboardButton::callback("❌ Cancel", "cancel")]);
@@ -736,7 +736,7 @@ async fn handle_callback(bot: Bot, q: CallbackQuery, state: Arc<BotState>) -> Re
                                 Ok(results) => {
                                     let mut buttons: Vec<Vec<InlineKeyboardButton>> = results.iter().map(|item| {
                                         let label = format!("🎵 {} — {}", item["title"].as_str().unwrap_or("?"), item["artist"]["name"].as_str().unwrap_or("?"));
-                                        let label = if label.len() > 60 { format!("{}...", &label[..57]) } else { label };
+                                        let label = if label.chars().count() > 60 { format!("{}...", label.chars().take(57).collect::<String>()) } else { label };
                                         vec![InlineKeyboardButton::callback(label, format!("dl:{}", item["link"].as_str().unwrap_or("")))]
                                     }).collect();
                                     buttons.push(vec![InlineKeyboardButton::callback("❌ Cancel", "cancel")]);
@@ -794,7 +794,7 @@ async fn do_search(bot: &Bot, msg: &Message, state: &Arc<BotState>, query: &str,
                     item["title"].as_str().unwrap_or("?"),
                     item["artist"]["name"].as_str().unwrap_or("?")
                 );
-                let label = if label.len() > 60 { format!("{}...", &label[..57]) } else { label };
+                let label = if label.chars().count() > 60 { format!("{}...", label.chars().take(57).collect::<String>()) } else { label };
                 let url = item["link"].as_str().unwrap_or("").to_string();
                 vec![InlineKeyboardButton::callback(label, format!("dl:{}", url))]
             }).collect();
@@ -822,7 +822,7 @@ async fn handle_spotify(bot: &Bot, msg: &Message, state: &Arc<BotState>, url: &s
                 Ok(results) => {
                     let mut buttons: Vec<Vec<InlineKeyboardButton>> = results.iter().map(|item| {
                         let label = format!("🎵 {} — {}", item["title"].as_str().unwrap_or("?"), item["artist"]["name"].as_str().unwrap_or("?"));
-                        let label = if label.len() > 60 { format!("{}...", &label[..57]) } else { label };
+                        let label = if label.chars().count() > 60 { format!("{}...", label.chars().take(57).collect::<String>()) } else { label };
                         let url = item["link"].as_str().unwrap_or("").to_string();
                         vec![InlineKeyboardButton::callback(label, format!("dl:{}", url))]
                     }).collect();
