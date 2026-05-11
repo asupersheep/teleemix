@@ -176,7 +176,7 @@ The default download quality is set via `DEEMIX_BITRATE` in your `.env`:
 
 Users can change the quality on the fly via `/settings` → 🎚️ Quality. Each tap cycles through the options.
 
-> ⚠️ Quality changes in /settings affect **all users** on the server, not just the user making the change.
+> ⚠️ Quality changes in /settings affect **all users** on the server immediately, since the setting is shared in memory. The change resets to the `DEEMIX_BITRATE` default when the container restarts.
 
 To lock the quality and prevent users from changing it, set:
 ```
@@ -323,7 +323,7 @@ The default download quality is set via `DEEMIX_BITRATE` in your `.env`:
 
 Users can change the quality on the fly via `/settings` → 🎚️ Quality. Each tap cycles through the options.
 
-> ⚠️ Quality changes in /settings affect **all users** on the server, not just the user making the change.
+> ⚠️ Quality changes in /settings affect **all users** on the server immediately, since the setting is shared in memory. The change resets to the `DEEMIX_BITRATE` default when the container restarts.
 
 To lock the quality and prevent users from changing it, set:
 ```
@@ -378,9 +378,3 @@ image: ghcr.io/asupersheep/teleemix:dev
 - [teloxide](https://github.com/teloxide/teloxide) — Telegram bot framework
 - [tokio](https://tokio.rs/) — async runtime
 - [reqwest](https://github.com/seanmonstar/reqwest) — HTTP client
-
----
-
-## License
-
-MIT
