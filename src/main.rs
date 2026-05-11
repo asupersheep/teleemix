@@ -416,6 +416,7 @@ async fn handle_message(bot: Bot, msg: Message, state: Arc<BotState>, dialogue: 
 
     // ── Voice note handling ──
     if let Some(voice) = msg.voice() {
+        dialogue.exit().await.ok(); // exit any active dialogue state
         let user_settings = users::get_or_create(&state.users, user_id_from_msg(&msg));
         let audd_on = state.config.audd_enabled() && user_settings.song_recognition;
         let whisper_on = state.config.whisper_enabled() && user_settings.voice_search;
@@ -472,6 +473,22 @@ async fn handle_message(bot: Bot, msg: Message, state: Arc<BotState>, dialogue: 
         "🎵 From Deezer URL" => {
             dialogue.update(State::AwaitingDl).await.ok();
             bot.send_message(msg.chat.id, "🎵 Send me a Deezer URL:").await?;
+            return Ok(());
+        }
+        "🎤 Voice search" => {
+            if !state.config.whisper_enabled() || !user_settings.voice_search {
+                bot.send_message(msg.chat.id, "⚠️ Voice search is not configured. Add OPENAI_API_KEY or WHISPER_URL to your .env, or enable it in /settings.").await?;
+            } else {
+                bot.send_message(msg.chat.id, "🎤 Send me a voice note and I'll transcribe what you said and search for it.").await?;
+            }
+            return Ok(());
+        }
+        "🎵 Recognize song" => {
+            if !state.config.audd_enabled() || !user_settings.song_recognition {
+                bot.send_message(msg.chat.id, "⚠️ Song recognition is not configured. Add AUDD_API_KEY to your .env, or enable it in /settings.").await?;
+            } else {
+                bot.send_message(msg.chat.id, "🎵 Send me a voice recording of a song and I'll identify it.").await?;
+            }
             return Ok(());
         }
         "📊 Check status" => {
