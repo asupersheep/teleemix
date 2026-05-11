@@ -33,6 +33,8 @@ pub enum State {
     AwaitingAlbum,
     AwaitingDl,
     AwaitingSpotify,
+    AwaitingVoiceTranscribe,
+    AwaitingVoiceRecognize,
 }
 
 type MyDialogue = Dialogue<State, InMemStorage<State>>;
@@ -183,6 +185,8 @@ async fn main() {
                 .branch(dptree::case![State::AwaitingAlbum].endpoint(receive_album))
                 .branch(dptree::case![State::AwaitingDl].endpoint(receive_dl))
                 .branch(dptree::case![State::AwaitingSpotify].endpoint(receive_spotify))
+                .branch(dptree::case![State::AwaitingVoiceTranscribe].endpoint(receive_voice_transcribe))
+                .branch(dptree::case![State::AwaitingVoiceRecognize].endpoint(receive_voice_recognize))
                 .branch(
                     Update::filter_message()
                         .filter_command::<Command>()
@@ -413,6 +417,101 @@ async fn receive_arl(bot: Bot, msg: Message, state: Arc<BotState>, dialogue: MyD
 
 // ── Message Handler ───────────────────────────────────────────────────────────
 
+
+async fn receive_voice_transcribe(bot: Bot, msg: Message, state: Arc<BotState>, dialogue: MyDialogue) -> ResponseResult<()> {
+    dialogue.exit().await.ok();
+
+    let voice = match msg.voice() {
+        Some(v) => v,
+        None => {
+            bot.send_message(msg.chat.id, "⚠️ I expected a voice note. Use /menu to try again.").await?;
+            return Ok(());
+        }
+    };
+
+    let sent = bot.send_message(msg.chat.id, "🎤 Transcribing...").await?;
+
+    // Download audio
+    let file = bot.get_file(&voice.file.id).await
+        .map_err(|e| teloxide::RequestError::Api(teloxide::ApiError::Unknown(e.to_string())))?;
+    let url = format!("https://api.telegram.org/file/bot{}/{}", bot.token(), file.path);
+    let audio_bytes = match state.http.get(&url).send().await {
+        Ok(r) => r.bytes().await.map_err(|e| teloxide::RequestError::Api(teloxide::ApiError::Unknown(e.to_string())))?.to_vec(),
+        Err(e) => { bot.edit_message_text(msg.chat.id, sent.id, format!("❌ Failed to download audio: {}", e)).await?; return Ok(()); }
+    };
+
+    match voice::transcribe(&state.http, audio_bytes, &state.config.openai_api_key, &state.config.whisper_url).await {
+        Ok(text) if text.is_empty() => { bot.edit_message_text(msg.chat.id, sent.id, "😕 Could not transcribe anything. Try speaking more clearly.").await?; }
+        Ok(text) => {
+            bot.edit_message_text(msg.chat.id, sent.id, format!("🔍 I heard: {}\nSearching...", text)).await?;
+            let sent2 = bot.send_message(msg.chat.id, format!("Results for: {}", text)).await?;
+            match deemix::search(&state, &text, "track").await {
+                Ok(results) if results.is_empty() => { bot.edit_message_text(msg.chat.id, sent2.id, format!("😕 No results for: {}", text)).await?; }
+                Ok(results) => {
+                    let mut buttons: Vec<Vec<InlineKeyboardButton>> = results.iter().map(|item| {
+                        let label = format!("🎵 {} — {}", item["title"].as_str().unwrap_or("?"), item["artist"]["name"].as_str().unwrap_or("?"));
+                        let label = if label.chars().count() > 60 { format!("{}...", label.chars().take(57).collect::<String>()) } else { label };
+                        vec![InlineKeyboardButton::callback(label, format!("dl:{}", item["link"].as_str().unwrap_or("")))]
+                    }).collect();
+                    buttons.push(vec![InlineKeyboardButton::callback("❌ Cancel", "cancel")]);
+                    bot.edit_message_text(msg.chat.id, sent2.id, format!("Results for {}:", text))
+                        .reply_markup(InlineKeyboardMarkup::new(buttons)).await?;
+                }
+                Err(e) => { bot.edit_message_text(msg.chat.id, sent2.id, format!("❌ Search failed: {}", e)).await?; }
+            }
+        }
+        Err(e) => { bot.edit_message_text(msg.chat.id, sent.id, format!("❌ Transcription failed: {}", e)).await?; }
+    }
+    Ok(())
+}
+
+async fn receive_voice_recognize(bot: Bot, msg: Message, state: Arc<BotState>, dialogue: MyDialogue) -> ResponseResult<()> {
+    dialogue.exit().await.ok();
+
+    let voice = match msg.voice() {
+        Some(v) => v,
+        None => {
+            bot.send_message(msg.chat.id, "⚠️ I expected a voice note. Use /menu to try again.").await?;
+            return Ok(());
+        }
+    };
+
+    let sent = bot.send_message(msg.chat.id, "🎵 Recognizing song...").await?;
+
+    // Download audio
+    let file = bot.get_file(&voice.file.id).await
+        .map_err(|e| teloxide::RequestError::Api(teloxide::ApiError::Unknown(e.to_string())))?;
+    let url = format!("https://api.telegram.org/file/bot{}/{}", bot.token(), file.path);
+    let audio_bytes = match state.http.get(&url).send().await {
+        Ok(r) => r.bytes().await.map_err(|e| teloxide::RequestError::Api(teloxide::ApiError::Unknown(e.to_string())))?.to_vec(),
+        Err(e) => { bot.edit_message_text(msg.chat.id, sent.id, format!("❌ Failed to download audio: {}", e)).await?; return Ok(()); }
+    };
+
+    match voice::recognize(&state.http, audio_bytes, &state.config.audd_api_key).await {
+        Ok((title, artist)) => {
+            let query = format!("{} {}", title, artist);
+            bot.edit_message_text(msg.chat.id, sent.id, format!("🎵 Found: {} — {}\nSearching on Deezer...", title, artist)).await?;
+            let sent2 = bot.send_message(msg.chat.id, format!("Results for: {}", query)).await?;
+            match deemix::search(&state, &query, "track").await {
+                Ok(results) if results.is_empty() => { bot.edit_message_text(msg.chat.id, sent2.id, format!("😕 No results on Deezer for: {}", query)).await?; }
+                Ok(results) => {
+                    let mut buttons: Vec<Vec<InlineKeyboardButton>> = results.iter().map(|item| {
+                        let label = format!("🎵 {} — {}", item["title"].as_str().unwrap_or("?"), item["artist"]["name"].as_str().unwrap_or("?"));
+                        let label = if label.chars().count() > 60 { format!("{}...", label.chars().take(57).collect::<String>()) } else { label };
+                        vec![InlineKeyboardButton::callback(label, format!("dl:{}", item["link"].as_str().unwrap_or("")))]
+                    }).collect();
+                    buttons.push(vec![InlineKeyboardButton::callback("❌ Cancel", "cancel")]);
+                    bot.edit_message_text(msg.chat.id, sent2.id, format!("Results for {} — {}:", title, artist))
+                        .reply_markup(InlineKeyboardMarkup::new(buttons)).await?;
+                }
+                Err(e) => { bot.edit_message_text(msg.chat.id, sent2.id, format!("❌ Search failed: {}", e)).await?; }
+            }
+        }
+        Err(e) => { bot.edit_message_text(msg.chat.id, sent.id, format!("❌ Recognition failed: {}", e)).await?; }
+    }
+    Ok(())
+}
+
 async fn handle_message(bot: Bot, msg: Message, state: Arc<BotState>, dialogue: MyDialogue) -> ResponseResult<()> {
     // Auto-create user
     let user_settings = users::get_or_create(&state.users, user_id_from_msg(&msg));
@@ -490,7 +589,21 @@ async fn handle_message(bot: Bot, msg: Message, state: Arc<BotState>, dialogue: 
             if !state.config.whisper_enabled() || !user_settings.voice_search {
                 bot.send_message(msg.chat.id, "⚠️ Voice search is not configured. Add OPENAI_API_KEY or WHISPER_URL to your .env, or enable it in /settings.").await?;
             } else {
-                bot.send_message(msg.chat.id, "🎤 Send me a voice note and I'll transcribe what you said and search for it.").await?;
+                dialogue.update(State::AwaitingVoiceTranscribe).await.ok();
+                bot.send_message(msg.chat.id, "🎤 Send me a voice note and I'll transcribe what you said and search for it.
+
+⏱ You have 60 seconds.").await?;
+                // Spawn timeout to reset dialogue after 60s
+                let dialogue_clone = dialogue.clone();
+                let chat_id = msg.chat.id;
+                let bot_clone = bot.clone();
+                tokio::spawn(async move {
+                    tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+                    if let Ok(Some(State::AwaitingVoiceTranscribe)) = dialogue_clone.get().await {
+                        dialogue_clone.exit().await.ok();
+                        let _ = bot_clone.send_message(chat_id, "⏱ Voice search timed out. Send a voice note or use /menu to start again.").await;
+                    }
+                });
             }
             return Ok(());
         }
@@ -498,7 +611,21 @@ async fn handle_message(bot: Bot, msg: Message, state: Arc<BotState>, dialogue: 
             if !state.config.audd_enabled() || !user_settings.song_recognition {
                 bot.send_message(msg.chat.id, "⚠️ Song recognition is not configured. Add AUDD_API_KEY to your .env, or enable it in /settings.").await?;
             } else {
-                bot.send_message(msg.chat.id, "🎵 Send me a voice recording of a song and I'll identify it.").await?;
+                dialogue.update(State::AwaitingVoiceRecognize).await.ok();
+                bot.send_message(msg.chat.id, "🎵 Send me a voice recording of a song and I'll identify it.
+
+⏱ You have 60 seconds.").await?;
+                // Spawn timeout to reset dialogue after 60s
+                let dialogue_clone = dialogue.clone();
+                let chat_id = msg.chat.id;
+                let bot_clone = bot.clone();
+                tokio::spawn(async move {
+                    tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+                    if let Ok(Some(State::AwaitingVoiceRecognize)) = dialogue_clone.get().await {
+                        dialogue_clone.exit().await.ok();
+                        let _ = bot_clone.send_message(chat_id, "⏱ Song recognition timed out. Send a voice note or use /menu to start again.").await;
+                    }
+                });
             }
             return Ok(());
         }
