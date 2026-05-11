@@ -700,7 +700,7 @@ async fn handle_callback(bot: Bot, q: CallbackQuery, state: Arc<BotState>) -> Re
                             bot.edit_message_text(msg.chat.id, msg.id, "😕 Could not transcribe anything. Try speaking more clearly.").await?;
                         }
                         Ok(text) => {
-                            bot.edit_message_text(msg.chat.id, msg.id, format!("🔍 I heard: "{}"\nSearching...", text)).await?;
+                            bot.edit_message_text(msg.chat.id, msg.id, format!("🔍 I heard: {}\nSearching...", text)).await?;
                             let sent = bot.send_message(msg.chat.id, format!("Results for: {}", text)).await?;
                             match deemix::search(&state, &text, "track").await {
                                 Ok(results) if results.is_empty() => {
