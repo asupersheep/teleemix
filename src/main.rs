@@ -221,7 +221,7 @@ fn user_id_from_msg(msg: &Message) -> i64 {
     msg.from().map(|u| u.id.0 as i64).unwrap_or(0)
 }
 
-fn settings_keyboard(s: &UserSettings, config: &Config) -> KeyboardMarkup {
+fn settings_keyboard(s: &UserSettings, config: &Config, bitrate: u8) -> KeyboardMarkup {
     let notif = if s.restart_notifications { "🔔 Restart notifications: ON" } else { "🔕 Restart notifications: OFF" };
     let voice = if s.voice_search && config.whisper_enabled() { "🎤 Voice search: ON" } else { "🎤 Voice search: OFF" };
     let recog = if s.song_recognition && config.audd_enabled() { "🎵 Song recognition: ON" } else { "🎵 Song recognition: OFF" };
