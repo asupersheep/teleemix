@@ -713,7 +713,7 @@ async fn handle_callback(bot: Bot, q: CallbackQuery, state: Arc<BotState>) -> Re
                                         vec![InlineKeyboardButton::callback(label, format!("dl:{}", item["link"].as_str().unwrap_or("")))]
                                     }).collect();
                                     buttons.push(vec![InlineKeyboardButton::callback("❌ Cancel", "cancel")]);
-                                    bot.edit_message_text(msg.chat.id, sent.id, format!("Results for \"{}\":", text))
+                                    bot.edit_message_text(msg.chat.id, sent.id, format!("Results for '{}':", text))
                                         .reply_markup(InlineKeyboardMarkup::new(buttons)).await?;
                                 }
                                 Err(e) => { bot.edit_message_text(msg.chat.id, sent.id, format!("❌ Search failed: {}", e)).await?; }
