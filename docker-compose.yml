@@ -11,7 +11,37 @@ services:
       - /path/to/your/.env:/app/.env
       # Persistent user settings and notification registry.
       - /path/to/your/data/users.json:/app/users.json
-      # Allows the bot to talk to Docker (for /updatearl restart trigger).
+      # Allows the bot to talk to Docker.
       - /var/run/docker.sock:/var/run/docker.sock
     env_file:
       - /path/to/your/.env
+
+  # ── Option 3: Local Whisper (voice search without OpenAI API key) ────────────
+  # Uncomment the section below to run Whisper locally.
+  # Then set WHISPER_URL=http://whisper:8000/v1/audio/transcriptions in your .env
+  #
+  # Model options (set via WHISPER__MODEL environment variable):
+  #   tiny    — fastest, least accurate (~75MB)
+  #   base    — good balance (~145MB)
+  #   small   — recommended, supports 99 languages including Arabic (~460MB)
+  #   medium  — more accurate, slower (~1.5GB)
+  #   large-v3 — most accurate, requires significant RAM/CPU (~3GB)
+  #
+  # To change the model, update the WHISPER__MODEL value below and recreate the container.
+  #
+  # whisper:
+  #   image: fedirz/faster-whisper-server:latest-cpu
+  #   container_name: whisper
+  #   restart: unless-stopped
+  #   volumes:
+  #     - whisper-models:/root/.cache/huggingface
+  #   environment:
+  #     - WHISPER__MODEL=small
+  #     - WHISPER__LANGUAGE=auto   # auto-detect language per request
+  #   ports:
+  #     - "8000:8000"
+
+# ── Volumes ──────────────────────────────────────────────────────────────────
+# Uncomment if using local Whisper (option 3) to persist downloaded models.
+# volumes:
+#   whisper-models:

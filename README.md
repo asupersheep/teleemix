@@ -106,17 +106,61 @@ docker compose up -d
 
 ## Voice Features (optional)
 
-### Voice Search
-Send a voice note saying a song or artist name. Teleemix transcribes it using OpenAI Whisper and runs a search.
+### Voice Search — Transcribe spoken song names
 
-**Requires:** An OpenAI API key (`OPENAI_API_KEY` in `.env`). Sign up at [platform.openai.com](https://platform.openai.com/). Cost is fractions of a cent per request.
+Send a voice note saying a song or artist name. Teleemix transcribes it and searches Deezer.
 
-### Song Recognition
-Send a voice recording of a song playing. Teleemix identifies it using the AudD API and queues it.
+Three backend options — choose one:
 
-**Requires:** An AudD API key (`AUDD_API_KEY` in `.env`). Free tier gives 100 recognitions/month. Sign up at [audd.io](https://audd.io/).
+**Option 1 — OpenAI remote API** (easiest, pay-per-use ~$0.006/min)
+```
+OPENAI_API_KEY=sk-your-key-here
+```
+Sign up at [platform.openai.com](https://platform.openai.com/).
 
-Both features are **optional** — leave the API keys empty to disable them entirely. Users can also toggle these features individually in `/settings`.
+**Option 2 — Local compatible server** (any OpenAI-compatible Whisper server)
+```
+WHISPER_URL=http://your-whisper-server:8000/v1/audio/transcriptions
+```
+Works with [faster-whisper-server](https://github.com/fedirz/faster-whisper-server), [whisper.cpp](https://github.com/ggerganov/whisper.cpp), or any compatible server.
+
+**Option 3 — Built-in local Whisper** (no API key needed, runs in Docker)
+
+Uncomment the `whisper` service block in `docker-compose.yml`, then set:
+```
+WHISPER_URL=http://whisper:8000/v1/audio/transcriptions
+```
+
+The default model is `small` which supports 99 languages including Dutch, English, and Arabic. To change the model, update `WHISPER__MODEL` in the compose file:
+
+| Model | Size | Speed | Accuracy |
+|---|---|---|---|
+| `tiny` | ~75MB | Fastest | Basic |
+| `base` | ~145MB | Fast | Good |
+| `small` | ~460MB | Balanced | **Recommended** |
+| `medium` | ~1.5GB | Slow | High |
+| `large-v3` | ~3GB | Slowest | Best |
+
+After changing the model, recreate the container:
+```bash
+docker compose up -d --force-recreate whisper
+```
+
+---
+
+### Song Recognition — Identify a song from a recording
+
+Send a voice recording of a song playing. Teleemix identifies the song using [AudD](https://audd.io/) and queues it.
+
+```
+AUDD_API_KEY=your-key-here
+```
+
+Free tier gives **100 recognitions/month**. Sign up at [audd.io](https://audd.io/).
+
+---
+
+Both features are **optional** — leave keys/URLs empty to disable. Users can toggle them individually in `/settings`.
 
 ---
 
@@ -185,17 +229,61 @@ Send `/register` to the bot once. From then on, every time the container restart
 
 ## Voice Features (optional)
 
-### Voice Search
-Send a voice note saying a song or artist name. Teleemix transcribes it using OpenAI Whisper and runs a search.
+### Voice Search — Transcribe spoken song names
 
-**Requires:** An OpenAI API key (`OPENAI_API_KEY` in `.env`). Sign up at [platform.openai.com](https://platform.openai.com/). Cost is fractions of a cent per request.
+Send a voice note saying a song or artist name. Teleemix transcribes it and searches Deezer.
 
-### Song Recognition
-Send a voice recording of a song playing. Teleemix identifies it using the AudD API and queues it.
+Three backend options — choose one:
 
-**Requires:** An AudD API key (`AUDD_API_KEY` in `.env`). Free tier gives 100 recognitions/month. Sign up at [audd.io](https://audd.io/).
+**Option 1 — OpenAI remote API** (easiest, pay-per-use ~$0.006/min)
+```
+OPENAI_API_KEY=sk-your-key-here
+```
+Sign up at [platform.openai.com](https://platform.openai.com/).
 
-Both features are **optional** — leave the API keys empty to disable them entirely. Users can also toggle these features individually in `/settings`.
+**Option 2 — Local compatible server** (any OpenAI-compatible Whisper server)
+```
+WHISPER_URL=http://your-whisper-server:8000/v1/audio/transcriptions
+```
+Works with [faster-whisper-server](https://github.com/fedirz/faster-whisper-server), [whisper.cpp](https://github.com/ggerganov/whisper.cpp), or any compatible server.
+
+**Option 3 — Built-in local Whisper** (no API key needed, runs in Docker)
+
+Uncomment the `whisper` service block in `docker-compose.yml`, then set:
+```
+WHISPER_URL=http://whisper:8000/v1/audio/transcriptions
+```
+
+The default model is `small` which supports 99 languages including Dutch, English, and Arabic. To change the model, update `WHISPER__MODEL` in the compose file:
+
+| Model | Size | Speed | Accuracy |
+|---|---|---|---|
+| `tiny` | ~75MB | Fastest | Basic |
+| `base` | ~145MB | Fast | Good |
+| `small` | ~460MB | Balanced | **Recommended** |
+| `medium` | ~1.5GB | Slow | High |
+| `large-v3` | ~3GB | Slowest | Best |
+
+After changing the model, recreate the container:
+```bash
+docker compose up -d --force-recreate whisper
+```
+
+---
+
+### Song Recognition — Identify a song from a recording
+
+Send a voice recording of a song playing. Teleemix identifies the song using [AudD](https://audd.io/) and queues it.
+
+```
+AUDD_API_KEY=your-key-here
+```
+
+Free tier gives **100 recognitions/month**. Sign up at [audd.io](https://audd.io/).
+
+---
+
+Both features are **optional** — leave keys/URLs empty to disable. Users can toggle them individually in `/settings`.
 
 ---
 

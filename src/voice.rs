@@ -1,0 +1,104 @@
+//! Voice feature handlers.
+//!
+//! Supports three Whisper backends (priority order):
+//!   1. OpenAI remote API  — set OPENAI_API_KEY
+//!   2. Local compatible   — set WHISPER_URL (e.g. faster-whisper-server)
+//!   3. Disabled           — leave both empty
+//!
+//! AudD song recognition  — set AUDD_API_KEY
+
+use reqwest::multipart;
+
+/// Transcribe an OGG audio file using the configured Whisper backend.
+/// Returns the transcribed text or an error string.
+pub async fn transcribe(
+    http: &reqwest::Client,
+    audio_bytes: Vec<u8>,
+    openai_key: &str,
+    whisper_url: &str,
+) -> Result<String, String> {
+    // Determine endpoint and auth header
+    let (endpoint, auth) = if !openai_key.is_empty() {
+        (
+            "https://api.openai.com/v1/audio/transcriptions".to_string(),
+            format!("Bearer {}", openai_key),
+        )
+    } else if !whisper_url.is_empty() {
+        (whisper_url.to_string(), String::new())
+    } else {
+        return Err("Voice search is not configured.".to_string());
+    };
+
+    let part = multipart::Part::bytes(audio_bytes)
+        .file_name("audio.ogg")
+        .mime_str("audio/ogg")
+        .map_err(|e| e.to_string())?;
+
+    let form = multipart::Form::new()
+        .part("file", part)
+        .text("model", "whisper-1")
+        .text("response_format", "text");
+
+    let mut req = http.post(&endpoint).multipart(form);
+    if !auth.is_empty() {
+        req = req.header("Authorization", auth);
+    }
+
+    let resp = req.send().await.map_err(|e| e.to_string())?;
+
+    if !resp.status().is_success() {
+        return Err(format!("Whisper API error: {}", resp.status()));
+    }
+
+    let text = resp.text().await.map_err(|e| e.to_string())?;
+    Ok(text.trim().to_string())
+}
+
+/// Identify a song from audio bytes using the AudD API.
+/// Returns (title, artist) or an error string.
+pub async fn recognize(
+    http: &reqwest::Client,
+    audio_bytes: Vec<u8>,
+    audd_key: &str,
+) -> Result<(String, String), String> {
+    if audd_key.is_empty() {
+        return Err("Song recognition is not configured.".to_string());
+    }
+
+    let part = multipart::Part::bytes(audio_bytes)
+        .file_name("audio.ogg")
+        .mime_str("audio/ogg")
+        .map_err(|e| e.to_string())?;
+
+    let form = multipart::Form::new()
+        .part("file", part)
+        .text("api_token", audd_key.to_string())
+        .text("return", "spotify,deezer");
+
+    let resp = http
+        .post("https://api.audd.io/")
+        .multipart(form)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let data: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+
+    if data["status"] != "success" {
+        return Err("AudD could not identify the song.".to_string());
+    }
+
+    let result = &data["result"];
+    if result.is_null() {
+        return Err("Song not recognized. Try a longer clip.".to_string());
+    }
+
+    let title = result["title"].as_str().unwrap_or("").to_string();
+    let artist = result["artist"].as_str().unwrap_or("").to_string();
+
+    if title.is_empty() {
+        return Err("Song not recognized.".to_string());
+    }
+
+    Ok((title, artist))
+}

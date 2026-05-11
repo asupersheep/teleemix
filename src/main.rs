@@ -17,6 +17,8 @@ use teloxide::{
 mod spotify;
 mod deemix;
 mod users;
+mod voice;
+mod voice;
 
 use users::{UsersDb, UserSettings};
 
@@ -47,6 +49,8 @@ pub struct Config {
     pub users_file: String,
     pub audd_api_key: String,
     pub openai_api_key: String,
+    pub whisper_url: String,
+    pub whisper_url: String,
 }
 
 impl Config {
@@ -65,12 +69,13 @@ impl Config {
                 .unwrap_or_else(|_| "/app/users.json".to_string()),
             audd_api_key: env::var("AUDD_API_KEY").unwrap_or_default(),
             openai_api_key: env::var("OPENAI_API_KEY").unwrap_or_default(),
+            whisper_url: env::var("WHISPER_URL").unwrap_or_default(),
         }
     }
 
 
     pub fn audd_enabled(&self) -> bool { !self.audd_api_key.is_empty() }
-    pub fn whisper_enabled(&self) -> bool { !self.openai_api_key.is_empty() }
+    pub fn whisper_enabled(&self) -> bool { !self.openai_api_key.is_empty() || !self.whisper_url.is_empty() }
 }
 
 // ── Bot State ─────────────────────────────────────────────────────────────────
@@ -412,6 +417,39 @@ async fn handle_message(bot: Bot, msg: Message, state: Arc<BotState>, dialogue: 
     let user_settings = users::get_or_create(&state.users, user_id_from_msg(&msg));
     users::save(&state.users, &state.config.users_file);
 
+    // ── Voice note handling ──
+    if let Some(voice) = msg.voice() {
+        let user_settings = users::get_or_create(&state.users, user_id_from_msg(&msg));
+        let audd_on = state.config.audd_enabled() && user_settings.song_recognition;
+        let whisper_on = state.config.whisper_enabled() && user_settings.voice_search;
+
+        if !audd_on && !whisper_on {
+            bot.send_message(msg.chat.id, "⚠️ Voice features are not configured or disabled. Use /settings to manage them.").await?;
+            return Ok(());
+        }
+
+        // Build choice buttons based on what's enabled
+        let mut buttons: Vec<Vec<teloxide::types::InlineKeyboardButton>> = vec![];
+        if whisper_on {
+            buttons.push(vec![teloxide::types::InlineKeyboardButton::callback(
+                "🎤 Transcribe what I said",
+                format!("voice:transcribe:{}", voice.file.id),
+            )]);
+        }
+        if audd_on {
+            buttons.push(vec![teloxide::types::InlineKeyboardButton::callback(
+                "🎵 Recognize the song",
+                format!("voice:recognize:{}", voice.file.id),
+            )]);
+        }
+        buttons.push(vec![teloxide::types::InlineKeyboardButton::callback("❌ Cancel", "cancel")]);
+
+        bot.send_message(msg.chat.id, "🎙️ What should I do with this voice note?")
+            .reply_markup(teloxide::types::InlineKeyboardMarkup::new(buttons))
+            .await?;
+        return Ok(());
+    }
+
     let text = match msg.text() {
         Some(t) => t.trim().to_string(),
         None => return Ok(()),
@@ -531,6 +569,12 @@ I connect to your personal deemix server and queue music downloads. Just tell me
             return Ok(());
         }
         _ => {}
+    }
+
+    // ── Voice notes ──
+    if let Some(voice) = msg.voice() {
+        handle_voice_note(&bot, &msg, &state, voice.file.id.clone()).await?;
+        return Ok(());
     }
 
     // ── Spotify URL ──
@@ -700,6 +744,50 @@ async fn handle_updatearl(bot: &Bot, msg: &Message, state: &Arc<BotState>, arl: 
         }
         Err(e) => { bot.edit_message_text(msg.chat.id, sent.id, format!("❌ ARL rejected by deemix: {}", e)).await?; }
     }
+    Ok(())
+}
+
+
+async fn handle_voice_note(
+    bot: &Bot,
+    msg: &Message,
+    state: &Arc<BotState>,
+    file_id: String,
+) -> ResponseResult<()> {
+    let user_settings = users::get_or_create(&state.users, msg.chat.id.0);
+    let whisper_on = state.config.whisper_enabled() && user_settings.voice_search;
+    let audd_on = state.config.audd_enabled() && user_settings.song_recognition;
+
+    if !whisper_on && !audd_on {
+        bot.send_message(
+            msg.chat.id,
+            "⚠️ Voice features are not configured or disabled.
+Check /settings or ask your admin to add API keys.",
+        )
+        .await?;
+        return Ok(());
+    }
+
+    // Show options based on what is enabled
+    let mut buttons = vec![];
+    if whisper_on {
+        buttons.push(vec![InlineKeyboardButton::callback(
+            "🗣️ Search what I said",
+            format!("voice_search:{}", file_id),
+        )]);
+    }
+    if audd_on {
+        buttons.push(vec![InlineKeyboardButton::callback(
+            "🎵 Recognize the song",
+            format!("voice_recognize:{}", file_id),
+        )]);
+    }
+    buttons.push(vec![InlineKeyboardButton::callback("❌ Cancel", "cancel")]);
+
+    bot.send_message(msg.chat.id, "🎤 What should I do with this voice note?")
+        .reply_markup(InlineKeyboardMarkup::new(buttons))
+        .await?;
+
     Ok(())
 }
 
