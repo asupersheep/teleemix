@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use reqwest::Client;
 use serde_json::Value;
 
 use crate::BotState;
@@ -11,7 +10,7 @@ pub async fn login(state: &Arc<BotState>) {
         return;
     }
     match login_arl(state, &state.config.deemix_arl.clone()).await {
-        Ok(username) => log::info!("Successfully logged into deemix"),
+        Ok(_) => log::info!("Successfully logged into deemix"),
         Err(e) => log::warn!("Could not login to deemix: {}", e),
     }
 }

@@ -3,14 +3,13 @@ use std::sync::Arc;
 
 use regex::Regex;
 use reqwest::Client;
-use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::Value;
 use teloxide::{
     dispatching::dialogue::InMemStorage,
     prelude::*,
     types::{
         InlineKeyboardButton, InlineKeyboardMarkup,
-        KeyboardButton, KeyboardMarkup, ParseMode,
+        KeyboardButton, KeyboardMarkup,
     },
     utils::command::BotCommands,
 };
