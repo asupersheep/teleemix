@@ -135,10 +135,12 @@ pub async fn lookup_deezer_via_odesli(http: &reqwest::Client, song_link: &str) -
     // Follow redirect to get the real song.link URL (lis.tn short links 302 to song.link/s/XXXX)
     let resolved = match http.get(song_link).send().await {
         Ok(r) => {
+            let status = r.status();
             let final_url = r.url().to_string();
+            log::info!("lis.tn GET: status={} final_url={}", status, final_url);
             if final_url != song_link { final_url } else { song_link.to_string() }
         }
-        Err(_) => song_link.to_string(),
+        Err(e) => { log::info!("lis.tn GET error: {}", e); song_link.to_string() }
     };
     log::info!("Odesli lookup: {} (resolved from {})", resolved, song_link);
 
@@ -150,7 +152,9 @@ pub async fn lookup_deezer_via_odesli(http: &reqwest::Client, song_link: &str) -
         .ok()?;
 
     if !resp.status().is_success() {
-        log::info!("Odesli HTTP error: {}", resp.status());
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        log::info!("Odesli HTTP error: {} — body: {}", status, body);
         return None;
     }
 
