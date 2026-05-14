@@ -120,6 +120,11 @@ pub async fn recognize(
 
     let song_link = result["song_link"].as_str().map(|s| s.to_string());
 
+    log::info!(
+        "AudD recognized: title={:?} artist={:?} deezer_url={:?} spotify_url={:?} song_link={:?}",
+        title, artist, deezer_url, spotify_url, song_link
+    );
+
     Ok(RecognitionResult { title, artist, deezer_url, spotify_url, song_link })
 }
 
@@ -127,19 +132,25 @@ pub async fn recognize(
 /// AudD includes a song_link in every recognition result; this converts it
 /// to a direct Deezer link without needing to do a text search.
 pub async fn lookup_deezer_via_odesli(http: &reqwest::Client, song_link: &str) -> Option<String> {
+    log::info!("Odesli lookup: {}", song_link);
+
     let resp = http
         .get("https://api.song.link/v1-alpha.1/links")
-        .query(&[("url", song_link), ("userCountry", "US")])
+        .query(&[("url", song_link)])
         .send()
         .await
         .ok()?;
 
     if !resp.status().is_success() {
+        log::info!("Odesli HTTP error: {}", resp.status());
         return None;
     }
 
     let data: serde_json::Value = resp.json().await.ok()?;
-    data["linksByPlatform"]["deezer"]["url"]
+    let deezer_url = data["linksByPlatform"]["deezer"]["url"]
         .as_str()
-        .map(|s| s.to_string())
+        .map(|s| s.to_string());
+
+    log::info!("Odesli deezer result: {:?}", deezer_url);
+    deezer_url
 }
