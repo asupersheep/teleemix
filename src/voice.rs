@@ -132,11 +132,16 @@ pub async fn recognize(
 /// AudD includes a song_link in every recognition result; this converts it
 /// to a direct Deezer link without needing to do a text search.
 pub async fn lookup_deezer_via_odesli(http: &reqwest::Client, song_link: &str) -> Option<String> {
-    log::info!("Odesli lookup: {}", song_link);
+    // lis.tn (and similar short links) need to be resolved before Odesli will accept them
+    let resolved = match http.head(song_link).send().await {
+        Ok(r) => r.url().to_string(),
+        Err(_) => song_link.to_string(),
+    };
+    log::info!("Odesli lookup: {} (resolved from {})", resolved, song_link);
 
     let resp = http
         .get("https://api.song.link/v1-alpha.1/links")
-        .query(&[("url", song_link)])
+        .query(&[("url", resolved.as_str())])
         .send()
         .await
         .ok()?;
