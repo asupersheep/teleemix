@@ -169,3 +169,38 @@ pub async fn lookup_deezer_via_odesli(http: &reqwest::Client, song_link: &str) -
     log::info!("song.link scraped Deezer URL: {:?}", deezer_url);
     deezer_url
 }
+
+/// Search iTunes for title+artist, then pass the Apple Music URL to Odesli to get a Deezer link.
+/// iTunes is free/no-auth and globally indexed; Odesli accepts Apple Music URLs.
+pub async fn lookup_deezer_via_itunes(http: &reqwest::Client, title: &str, artist: &str) -> Option<String> {
+    let term = format!("{} {}", title, artist);
+    log::info!("iTunes search: {:?}", term);
+
+    let resp = http
+        .get("https://itunes.apple.com/search")
+        .query(&[("term", term.as_str()), ("media", "music"), ("entity", "song"), ("limit", "1")])
+        .send()
+        .await
+        .ok()?;
+
+    let data: serde_json::Value = resp.json().await.ok()?;
+    let track_url = data["results"][0]["trackViewUrl"].as_str()?.to_string();
+    log::info!("iTunes track URL: {}", track_url);
+
+    let resp = http
+        .get("https://api.song.link/v1-alpha.1/links")
+        .query(&[("url", track_url.as_str())])
+        .send()
+        .await
+        .ok()?;
+
+    if !resp.status().is_success() {
+        log::info!("Odesli via iTunes failed: {}", resp.status());
+        return None;
+    }
+
+    let data: serde_json::Value = resp.json().await.ok()?;
+    let deezer_url = data["linksByPlatform"]["deezer"]["url"].as_str().map(|s| s.to_string());
+    log::info!("iTunes→Odesli Deezer URL: {:?}", deezer_url);
+    deezer_url
+}

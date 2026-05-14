@@ -536,7 +536,15 @@ async fn receive_voice_recognize(bot: Bot, msg: Message, state: Arc<BotState>, d
                         }
                     }
                 } else {
-                    log::info!("[recognize] Step 2: Odesli gave no Deezer URL, trying Spotify/text search");
+                    log::info!("[recognize] Step 2: song.link gave no Deezer URL, trying iTunes→Odesli");
+                    let itunes_deezer = voice::lookup_deezer_via_itunes(&state.http, &rec.title, &rec.artist).await;
+                    if let Some(ref deezer_url) = itunes_deezer {
+                        log::info!("[recognize] Step 2b: using iTunes→Odesli Deezer URL: {}", deezer_url);
+                        match deemix::add_to_queue(&state, deezer_url).await {
+                            Ok(_) => { bot.edit_message_text(msg.chat.id, sent.id, format!("✅ {} — {} added to queue!", rec.title, rec.artist)).await?; }
+                            Err(e) => { log::info!("[recognize] Step 2b FAILED: {}", e); bot.edit_message_text(msg.chat.id, sent.id, format!("❌ Failed to queue: {}", e)).await?; }
+                        }
+                    } else {
                     // Try Spotify metadata for proper Unicode title; fall back to arabizi
                     let search_query = if let Some(ref sp_url) = rec.spotify_url {
                         log::info!("[recognize] Step 3: resolving Spotify URL: {}", sp_url);
@@ -572,6 +580,7 @@ async fn receive_voice_recognize(bot: Bot, msg: Message, state: Arc<BotState>, d
                         bot.edit_message_text(msg.chat.id, sent2.id, format!("Results for {} — {}:", rec.title, rec.artist))
                             .reply_markup(InlineKeyboardMarkup::new(buttons)).await?;
                     }
+                    } // closes iTunes else
                 }
             }
         }
@@ -988,7 +997,15 @@ async fn handle_callback(bot: Bot, q: CallbackQuery, state: Arc<BotState>) -> Re
                                         }
                                     }
                                 } else {
-                                    log::info!("[recognize/cb] Step 2: Odesli gave no Deezer URL, trying Spotify/text search");
+                                    log::info!("[recognize/cb] Step 2: song.link gave no Deezer URL, trying iTunes→Odesli");
+                                    let itunes_deezer = voice::lookup_deezer_via_itunes(&state.http, &rec.title, &rec.artist).await;
+                                    if let Some(ref deezer_url) = itunes_deezer {
+                                        log::info!("[recognize/cb] Step 2b: using iTunes→Odesli Deezer URL: {}", deezer_url);
+                                        match deemix::add_to_queue(&state, deezer_url).await {
+                                            Ok(_) => { bot.edit_message_text(msg.chat.id, msg.id, format!("✅ {} — {} added to queue!", rec.title, rec.artist)).await?; }
+                                            Err(e) => { log::info!("[recognize/cb] Step 2b FAILED: {}", e); bot.edit_message_text(msg.chat.id, msg.id, format!("❌ Failed to queue: {}", e)).await?; }
+                                        }
+                                    } else {
                                     // Try Spotify metadata for proper Unicode title; fall back to arabizi
                                     let search_query = if let Some(ref sp_url) = rec.spotify_url {
                                         log::info!("[recognize/cb] Step 3: resolving Spotify URL: {}", sp_url);
@@ -1024,6 +1041,7 @@ async fn handle_callback(bot: Bot, q: CallbackQuery, state: Arc<BotState>) -> Re
                                         bot.edit_message_text(msg.chat.id, sent.id, format!("Results for {} — {}:", rec.title, rec.artist))
                                             .reply_markup(InlineKeyboardMarkup::new(buttons)).await?;
                                     }
+                                    } // closes iTunes else
                                 }
                             }
                         }
