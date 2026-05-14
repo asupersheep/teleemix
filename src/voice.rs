@@ -54,13 +54,21 @@ pub async fn transcribe(
     Ok(text.trim().to_string())
 }
 
+/// Recognition result — includes optional Deezer URL from AudD's own matching.
+/// Using the Deezer URL directly avoids transliteration mismatches in search.
+pub struct RecognitionResult {
+    pub title: String,
+    pub artist: String,
+    pub deezer_url: Option<String>, // direct Deezer link if AudD found one
+}
+
 /// Identify a song from audio bytes using the AudD API.
-/// Returns (title, artist) or an error string.
+/// Returns RecognitionResult or an error string.
 pub async fn recognize(
     http: &reqwest::Client,
     audio_bytes: Vec<u8>,
     audd_key: &str,
-) -> Result<(String, String), String> {
+) -> Result<RecognitionResult, String> {
     if audd_key.is_empty() {
         return Err("Song recognition is not configured.".to_string());
     }
@@ -73,7 +81,7 @@ pub async fn recognize(
     let form = multipart::Form::new()
         .part("file", part)
         .text("api_token", audd_key.to_string())
-        .text("return", "spotify,deezer");
+        .text("return", "deezer"); // request Deezer data directly
 
     let resp = http
         .post("https://api.audd.io/")
@@ -100,5 +108,10 @@ pub async fn recognize(
         return Err("Song not recognized.".to_string());
     }
 
-    Ok((title, artist))
+    // Extract Deezer URL directly from AudD response — bypasses transliteration issues
+    let deezer_url = result["deezer"]["link"]
+        .as_str()
+        .map(|s| s.to_string());
+
+    Ok(RecognitionResult { title, artist, deezer_url })
 }

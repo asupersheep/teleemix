@@ -502,23 +502,32 @@ async fn receive_voice_recognize(bot: Bot, msg: Message, state: Arc<BotState>, d
     };
 
     match voice::recognize(&state.http, audio_bytes, &state.config.audd_api_key).await {
-        Ok((title, artist)) => {
-            let query = format!("{} {}", title, artist);
-            bot.edit_message_text(msg.chat.id, sent.id, format!("🎵 Found: {} — {}\nSearching on Deezer...", title, artist)).await?;
-            let sent2 = bot.send_message(msg.chat.id, format!("Results for: {}", query)).await?;
-            match deemix::search(&state, &query, "track").await {
-                Ok(results) if results.is_empty() => { bot.edit_message_text(msg.chat.id, sent2.id, format!("😕 No results on Deezer for: {}", query)).await?; }
-                Ok(results) => {
-                    let mut buttons: Vec<Vec<InlineKeyboardButton>> = results.iter().map(|item| {
-                        let label = format!("🎵 {} — {}", item["title"].as_str().unwrap_or("?"), item["artist"]["name"].as_str().unwrap_or("?"));
-                        let label = if label.chars().count() > 60 { format!("{}...", label.chars().take(57).collect::<String>()) } else { label };
-                        vec![InlineKeyboardButton::callback(label, format!("dl:{}", item["link"].as_str().unwrap_or("")))]
-                    }).collect();
-                    buttons.push(vec![InlineKeyboardButton::callback("❌ Cancel", "cancel")]);
-                    bot.edit_message_text(msg.chat.id, sent2.id, format!("Results for {} — {}:", title, artist))
-                        .reply_markup(InlineKeyboardMarkup::new(buttons)).await?;
+        Ok(rec) => {
+            let query = format!("{} {}", rec.title, rec.artist);
+            bot.edit_message_text(msg.chat.id, sent.id, format!("🎵 Found: {} — {}\nQueuing...", rec.title, rec.artist)).await?;
+            // Use Deezer URL directly from AudD if available (avoids transliteration issues)
+            if let Some(deezer_url) = rec.deezer_url {
+                match deemix::add_to_queue(&state, &deezer_url).await {
+                    Ok(_) => { bot.edit_message_text(msg.chat.id, sent.id, format!("✅ {} — {} added to queue!", rec.title, rec.artist)).await?; }
+                    Err(e) => { bot.edit_message_text(msg.chat.id, sent.id, format!("❌ Failed to queue: {}", e)).await?; }
                 }
-                Err(e) => { bot.edit_message_text(msg.chat.id, sent2.id, format!("❌ Search failed: {}", e)).await?; }
+            } else {
+                // Fall back to search if AudD didn't return a Deezer link
+                let sent2 = bot.send_message(msg.chat.id, format!("Results for: {}", query)).await?;
+                match deemix::search(&state, &query, "track").await {
+                    Ok(results) if results.is_empty() => { bot.edit_message_text(msg.chat.id, sent2.id, format!("😕 No results on Deezer for: {}", query)).await?; }
+                    Ok(results) => {
+                        let mut buttons: Vec<Vec<InlineKeyboardButton>> = results.iter().map(|item| {
+                            let label = format!("🎵 {} — {}", item["title"].as_str().unwrap_or("?"), item["artist"]["name"].as_str().unwrap_or("?"));
+                            let label = if label.chars().count() > 60 { format!("{}...", label.chars().take(57).collect::<String>()) } else { label };
+                            vec![InlineKeyboardButton::callback(label, format!("dl:{}", item["link"].as_str().unwrap_or("")))]
+                        }).collect();
+                        buttons.push(vec![InlineKeyboardButton::callback("❌ Cancel", "cancel")]);
+                        bot.edit_message_text(msg.chat.id, sent2.id, format!("Results for {} — {}:", rec.title, rec.artist))
+                            .reply_markup(InlineKeyboardMarkup::new(buttons)).await?;
+                    }
+                    Err(e) => { bot.edit_message_text(msg.chat.id, sent2.id, format!("❌ Search failed: {}", e)).await?; }
+                }
             }
         }
         Err(e) => { bot.edit_message_text(msg.chat.id, sent.id, format!("❌ Recognition failed: {}", e)).await?; }
@@ -900,25 +909,34 @@ async fn handle_callback(bot: Bot, q: CallbackQuery, state: Arc<BotState>) -> Re
                 "recognize" => {
                     bot.edit_message_text(msg.chat.id, msg.id, "🎵 Recognizing song...").await?;
                     match voice::recognize(&state.http, audio_bytes, &state.config.audd_api_key).await {
-                        Ok((title, artist)) => {
-                            let query = format!("{} {}", title, artist);
-                            bot.edit_message_text(msg.chat.id, msg.id, format!("🎵 Found: {} — {}\nSearching on Deezer...", title, artist)).await?;
-                            let sent = bot.send_message(msg.chat.id, format!("Results for: {}", query)).await?;
-                            match deemix::search(&state, &query, "track").await {
-                                Ok(results) if results.is_empty() => {
-                                    bot.edit_message_text(msg.chat.id, sent.id, format!("😕 No results on Deezer for: {}", query)).await?;
+                        Ok(rec) => {
+                            let query = format!("{} {}", rec.title, rec.artist);
+                            bot.edit_message_text(msg.chat.id, msg.id, format!("🎵 Found: {} — {}\nQueuing...", rec.title, rec.artist)).await?;
+                            // Use Deezer URL directly from AudD if available (avoids transliteration issues)
+                            if let Some(deezer_url) = rec.deezer_url {
+                                match deemix::add_to_queue(&state, &deezer_url).await {
+                                    Ok(_) => { bot.edit_message_text(msg.chat.id, msg.id, format!("✅ {} — {} added to queue!", rec.title, rec.artist)).await?; }
+                                    Err(e) => { bot.edit_message_text(msg.chat.id, msg.id, format!("❌ Failed to queue: {}", e)).await?; }
                                 }
-                                Ok(results) => {
-                                    let mut buttons: Vec<Vec<InlineKeyboardButton>> = results.iter().map(|item| {
-                                        let label = format!("🎵 {} — {}", item["title"].as_str().unwrap_or("?"), item["artist"]["name"].as_str().unwrap_or("?"));
-                                        let label = if label.chars().count() > 60 { format!("{}...", label.chars().take(57).collect::<String>()) } else { label };
-                                        vec![InlineKeyboardButton::callback(label, format!("dl:{}", item["link"].as_str().unwrap_or("")))]
-                                    }).collect();
-                                    buttons.push(vec![InlineKeyboardButton::callback("❌ Cancel", "cancel")]);
-                                    bot.edit_message_text(msg.chat.id, sent.id, format!("Results for {} — {}:", title, artist))
-                                        .reply_markup(InlineKeyboardMarkup::new(buttons)).await?;
+                            } else {
+                                // Fall back to search if AudD didn't return a Deezer link
+                                let sent = bot.send_message(msg.chat.id, format!("Searching for: {}", query)).await?;
+                                match deemix::search(&state, &query, "track").await {
+                                    Ok(results) if results.is_empty() => {
+                                        bot.edit_message_text(msg.chat.id, sent.id, format!("😕 No results on Deezer for: {}", query)).await?;
+                                    }
+                                    Ok(results) => {
+                                        let mut buttons: Vec<Vec<InlineKeyboardButton>> = results.iter().map(|item| {
+                                            let label = format!("🎵 {} — {}", item["title"].as_str().unwrap_or("?"), item["artist"]["name"].as_str().unwrap_or("?"));
+                                            let label = if label.chars().count() > 60 { format!("{}...", label.chars().take(57).collect::<String>()) } else { label };
+                                            vec![InlineKeyboardButton::callback(label, format!("dl:{}", item["link"].as_str().unwrap_or("")))]
+                                        }).collect();
+                                        buttons.push(vec![InlineKeyboardButton::callback("❌ Cancel", "cancel")]);
+                                        bot.edit_message_text(msg.chat.id, sent.id, format!("Results for {} — {}:", rec.title, rec.artist))
+                                            .reply_markup(InlineKeyboardMarkup::new(buttons)).await?;
+                                    }
+                                    Err(e) => { bot.edit_message_text(msg.chat.id, sent.id, format!("❌ Search failed: {}", e)).await?; }
                                 }
-                                Err(e) => { bot.edit_message_text(msg.chat.id, sent.id, format!("❌ Search failed: {}", e)).await?; }
                             }
                         }
                         Err(e) => { bot.edit_message_text(msg.chat.id, msg.id, format!("❌ Recognition failed: {}", e)).await?; }
