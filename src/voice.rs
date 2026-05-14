@@ -54,12 +54,14 @@ pub async fn transcribe(
     Ok(text.trim().to_string())
 }
 
-/// Recognition result — includes optional Deezer URL from AudD's own matching.
-/// Using the Deezer URL directly avoids transliteration mismatches in search.
+/// Recognition result from AudD.
+/// Prefer deezer_url → song_link (Odesli) → spotify_url → text search, in that order.
 pub struct RecognitionResult {
     pub title: String,
     pub artist: String,
-    pub deezer_url: Option<String>, // direct Deezer link if AudD found one
+    pub deezer_url: Option<String>,
+    pub spotify_url: Option<String>,
+    pub song_link: Option<String>,
 }
 
 /// Identify a song from audio bytes using the AudD API.
@@ -81,7 +83,7 @@ pub async fn recognize(
     let form = multipart::Form::new()
         .part("file", part)
         .text("api_token", audd_key.to_string())
-        .text("return", "deezer"); // request Deezer data directly
+        .text("return", "deezer,spotify");
 
     let resp = http
         .post("https://api.audd.io/")
@@ -108,10 +110,36 @@ pub async fn recognize(
         return Err("Song not recognized.".to_string());
     }
 
-    // Extract Deezer URL directly from AudD response — bypasses transliteration issues
     let deezer_url = result["deezer"]["link"]
         .as_str()
         .map(|s| s.to_string());
 
-    Ok(RecognitionResult { title, artist, deezer_url })
+    let spotify_url = result["spotify"]["external_urls"]["spotify"]
+        .as_str()
+        .map(|s| s.to_string());
+
+    let song_link = result["song_link"].as_str().map(|s| s.to_string());
+
+    Ok(RecognitionResult { title, artist, deezer_url, spotify_url, song_link })
+}
+
+/// Query the Odesli/song.link public API to find a Deezer track URL.
+/// AudD includes a song_link in every recognition result; this converts it
+/// to a direct Deezer link without needing to do a text search.
+pub async fn lookup_deezer_via_odesli(http: &reqwest::Client, song_link: &str) -> Option<String> {
+    let resp = http
+        .get("https://api.song.link/v1-alpha.1/links")
+        .query(&[("url", song_link), ("userCountry", "US")])
+        .send()
+        .await
+        .ok()?;
+
+    if !resp.status().is_success() {
+        return None;
+    }
+
+    let data: serde_json::Value = resp.json().await.ok()?;
+    data["linksByPlatform"]["deezer"]["url"]
+        .as_str()
+        .map(|s| s.to_string())
 }
