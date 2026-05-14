@@ -1,12 +1,37 @@
 <p align="center">
-  <img src="logo.png" alt="Teleemix Logo" width="200"/>
+  <img src="logo.png" alt="Teleemix Logo" width="180"/>
 </p>
 
-# Teleemix
+<h1 align="center">Teleemix</h1>
+
+<p align="center">
+  <em>Your music, your server, your phone. No friction.</em>
+</p>
+
+<p align="center">
+  <a href="https://github.com/asupersheep/teleemix/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
+  <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/built%20with-Rust-orange.svg" alt="Built with Rust"></a>
+  <a href="https://github.com/asupersheep/teleemix/releases"><img src="https://img.shields.io/github/v/release/asupersheep/teleemix" alt="Release"></a>
+  <a href="https://github.com/asupersheep/teleemix/pkgs/container/teleemix"><img src="https://img.shields.io/badge/docker-ghcr.io-blue" alt="Docker"></a>
+  <a href="https://github.com/asupersheep/teleemix/wiki"><img src="https://img.shields.io/badge/docs-wiki-green" alt="Docs"></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/asupersheep/teleemix/wiki">→ Full documentation on the Wiki</a>
+</p>
+
+---
 
 A fast, lightweight Telegram bot written in Rust for requesting music downloads via your self-hosted [deemix](https://github.com/bambanah/deemix) instance — from your phone, without ever touching the deemix web UI or dealing with ARL logins.
 
-Supports Deezer URLs, Spotify links, and free-text search.
+Supports Deezer URLs, Spotify links, voice search, song recognition, and free-text search.
+
+---
+
+> ⚠️ **Important:** Teleemix requires deemix to run with `DEEMIX_SINGLE_USER=true`. Without this, deemix runs in multi-user mode and Teleemix will get `NotLoggedIn` errors. Add this to your deemix environment variables:
+> ```
+> DEEMIX_SINGLE_USER=true
+> ```
 
 ---
 
