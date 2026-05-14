@@ -176,15 +176,27 @@ pub async fn lookup_deezer_via_itunes(http: &reqwest::Client, title: &str, artis
     let term = format!("{} {}", title, artist);
     log::info!("iTunes search: {:?}", term);
 
-    let resp = http
+    let resp = match http
         .get("https://itunes.apple.com/search")
         .query(&[("term", term.as_str()), ("media", "music"), ("entity", "song"), ("limit", "1")])
         .send()
         .await
-        .ok()?;
+    {
+        Ok(r) => r,
+        Err(e) => { log::info!("iTunes request failed: {}", e); return None; }
+    };
 
-    let data: serde_json::Value = resp.json().await.ok()?;
-    let track_url = data["results"][0]["trackViewUrl"].as_str()?.to_string();
+    log::info!("iTunes response status: {}", resp.status());
+    let data: serde_json::Value = match resp.json().await {
+        Ok(v) => v,
+        Err(e) => { log::info!("iTunes JSON parse failed: {}", e); return None; }
+    };
+    log::info!("iTunes resultCount: {}", data["resultCount"]);
+
+    let track_url = match data["results"][0]["trackViewUrl"].as_str() {
+        Some(u) => u.to_string(),
+        None => { log::info!("iTunes: no trackViewUrl in first result"); return None; }
+    };
     log::info!("iTunes track URL: {}", track_url);
 
     let resp = http
