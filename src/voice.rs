@@ -125,6 +125,9 @@ pub async fn recognize(
         "AudD recognized: title={:?} artist={:?} deezer_url={:?} spotify_url={:?} song_link={:?}",
         title, artist, deezer_url, spotify_url, song_link
     );
+    log::info!("AudD raw result keys: {:?}", result.as_object().map(|o| o.keys().collect::<Vec<_>>()));
+    log::info!("AudD deezer field: {}", result["deezer"]);
+    log::info!("AudD spotify field: {}", result["spotify"]);
 
     Ok(RecognitionResult { title, artist, deezer_url, spotify_url, song_link })
 }
@@ -143,7 +146,9 @@ pub async fn lookup_deezer_via_odesli(http: &reqwest::Client, song_link: &str) -
     let html = resp.text().await.ok()?;
 
     let re = Regex::new(r#"<script id="__NEXT_DATA__" type="application/json">(.*?)</script>"#).ok()?;
-    let json_str = re.captures(&html)?.get(1)?.as_str().to_string();
+    let caps = re.captures(&html);
+    log::info!("song.link __NEXT_DATA__ regex matched: {}", caps.is_some());
+    let json_str = caps?.get(1)?.as_str().to_string();
 
     let data: serde_json::Value = serde_json::from_str(&json_str).ok()?;
     let page_props = &data["props"]["pageProps"];
