@@ -551,7 +551,7 @@ async fn receive_voice_recognize(bot: Bot, msg: Message, state: Arc<BotState>, d
                     log::info!("[recognize] Step 3: Deezer text search query: {:?}", search_query);
                     let sent2 = bot.send_message(msg.chat.id, "Searching on Deezer...").await?;
                     match deemix::search(&state, &search_query, "track").await {
-                        Ok(results) if results.is_empty() => { bot.edit_message_text(msg.chat.id, sent2.id, format!("😕 No results on Deezer for: {}", search_query)).await?; }
+                        Ok(results) if results.is_empty() => { log::info!("[recognize] Step 3: Deezer search returned 0 results"); bot.edit_message_text(msg.chat.id, sent2.id, format!("😕 No results on Deezer for: {}", search_query)).await?; }
                         Ok(results) => {
                             log::info!("[recognize] Step 3: got {} Deezer results", results.len());
                             let mut buttons: Vec<Vec<InlineKeyboardButton>> = results.iter().map(|item| {
@@ -1010,7 +1010,7 @@ async fn handle_callback(bot: Bot, q: CallbackQuery, state: Arc<BotState>) -> Re
                                             bot.edit_message_text(msg.chat.id, sent.id, format!("Results for {} — {}:", rec.title, rec.artist))
                                                 .reply_markup(InlineKeyboardMarkup::new(buttons)).await?;
                                         }
-                                        Err(e) => { bot.edit_message_text(msg.chat.id, sent.id, format!("❌ Search failed: {}", e)).await?; }
+                                        Err(e) => { log::info!("[recognize/cb] Step 3: Deezer search error: {}", e); bot.edit_message_text(msg.chat.id, sent.id, format!("❌ Search failed: {}", e)).await?; }
                                     }
                                 }
                             }
