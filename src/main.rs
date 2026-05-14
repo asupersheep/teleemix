@@ -503,7 +503,7 @@ async fn receive_voice_recognize(bot: Bot, msg: Message, state: Arc<BotState>, d
 
     match voice::recognize(&state.http, audio_bytes, &state.config.audd_api_key).await {
         Ok(rec) => {
-            let query = format!("{} {}", rec.title, rec.artist);
+            let query = format!("{} {}", rec.title, rec.artist).replace('&', " ").split_whitespace().collect::<Vec<_>>().join(" ");
             bot.edit_message_text(msg.chat.id, sent.id, format!("🎵 Found: {} — {}\nQueuing...", rec.title, rec.artist)).await?;
             // Use Deezer URL directly from AudD if available (avoids transliteration issues)
             if let Some(ref deezer_url) = rec.deezer_url {
@@ -955,7 +955,7 @@ async fn handle_callback(bot: Bot, q: CallbackQuery, state: Arc<BotState>) -> Re
                     bot.edit_message_text(msg.chat.id, msg.id, "🎵 Recognizing song...").await?;
                     match voice::recognize(&state.http, audio_bytes, &state.config.audd_api_key).await {
                         Ok(rec) => {
-                            let query = format!("{} {}", rec.title, rec.artist);
+                            let query = format!("{} {}", rec.title, rec.artist).replace('&', " ").split_whitespace().collect::<Vec<_>>().join(" ");
                             bot.edit_message_text(msg.chat.id, msg.id, format!("🎵 Found: {} — {}\nQueuing...", rec.title, rec.artist)).await?;
                             // Use Deezer URL directly from AudD if available (avoids transliteration issues)
                             if let Some(ref deezer_url) = rec.deezer_url {
