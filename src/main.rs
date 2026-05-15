@@ -279,9 +279,12 @@ fn main_keyboard(s: &UserSettings, config: &Config) -> KeyboardMarkup {
 
     rows.push(vec![
         KeyboardButton::new("📊 Check status"),
-        KeyboardButton::new("⚙️ Settings"),
+        KeyboardButton::new("🧹 Clear queue"),
     ]);
-    rows.push(vec![KeyboardButton::new("ℹ️ Help")]);
+    rows.push(vec![
+        KeyboardButton::new("⚙️ Settings"),
+        KeyboardButton::new("ℹ️ Help"),
+    ]);
 
     KeyboardMarkup::new(rows).resize_keyboard(true)
 }
@@ -773,6 +776,14 @@ async fn handle_message(bot: Bot, msg: Message, state: Arc<BotState>, dialogue: 
             }
             return Ok(());
         }
+        "🧹 Clear queue" => {
+            match deemix::clear_completed(&state).await {
+                Ok(0) => { bot.send_message(msg.chat.id, "📭 No completed downloads to clear.").await?; }
+                Ok(n) => { bot.send_message(msg.chat.id, format!("🧹 Cleared {} completed download(s) from queue.", n)).await?; }
+                Err(e) => { bot.send_message(msg.chat.id, format!("❌ Failed to clear queue: {}", e)).await?; }
+            }
+            return Ok(());
+        }
         "⚙️ Settings" => {
             let current_br = *state.current_bitrate.lock().await;
     let kb = settings_keyboard(&user_settings, &state.config, current_br);
@@ -944,9 +955,13 @@ async fn handle_callback(bot: Bot, q: CallbackQuery, state: Arc<BotState>) -> Re
 
     if let Some(url) = data.strip_prefix("dl:") {
         if let Some(msg) = &q.message {
-            bot.edit_message_text(msg.chat.id, msg.id, "⏳ Queuing download...").await?;
+            let kind = DEEZER_URL_RE.captures(url)
+                .and_then(|c| c.get(1))
+                .map(|m| capitalize(m.as_str()))
+                .unwrap_or_else(|| "Item".to_string());
+            bot.edit_message_text(msg.chat.id, msg.id, format!("⏳ Queuing {}...", kind.to_lowercase())).await?;
             match deemix::add_to_queue(&state, url).await {
-                Ok(_) => { bot.edit_message_text(msg.chat.id, msg.id, format!("✅ Added to queue!\n{}", url)).await?; }
+                Ok(_) => { bot.edit_message_text(msg.chat.id, msg.id, format!("✅ {} added to queue!", kind)).await?; }
                 Err(e) => { bot.edit_message_text(msg.chat.id, msg.id, format!("❌ Failed: {}", e)).await?; }
             }
         }

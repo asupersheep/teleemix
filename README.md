@@ -24,7 +24,7 @@
 
 A fast, lightweight Telegram bot written in Rust for requesting music downloads via your self-hosted [deemix](https://github.com/bambanah/deemix) instance — from your phone, without ever touching the deemix web UI or dealing with ARL logins.
 
-Supports Deezer URLs, Spotify links, voice search, song recognition, and free-text search.
+Supports Deezer URLs, Spotify links, YouTube, YouTube Music, Apple Music, voice search, song recognition, and free-text search.
 
 ---
 
@@ -38,7 +38,9 @@ Supports Deezer URLs, Spotify links, voice search, song recognition, and free-te
 ## Features
 
 - 🎵 Send a **Deezer URL** (track, album, playlist) → queued instantly
-- 🟢 Send a **Spotify link** (track or album) → looked up and queued automatically
+- 🔗 Send a **Spotify link** (track, album, or playlist) → looked up and queued automatically
+- 🎬 Send a **YouTube or YouTube Music link** → resolved via Odesli and queued on Deezer
+- 🍎 Send an **Apple Music link** → resolved via Odesli and queued on Deezer
 - 🔍 Send a **song or artist name** → search results shown as buttons to pick from
 - 🎤 Send a **voice note** → transcribe what you said and search (requires OpenAI key)
 - 🎵 Send a **voice recording of a song** → identify it and queue it (requires AudD key)
@@ -48,6 +50,7 @@ Supports Deezer URLs, Spotify links, voice search, song recognition, and free-te
 - 🔔 Restart notifications — opt-in per user via /settings
 - 🔄 `/updatearl` — update your Deezer ARL interactively via Telegram
 - 📊 `/status` — shows pending, downloading, and completed queue items separately
+- 🧹 `/clearqueue` — clear completed downloads from the deemix queue
 - 🔒 Optional user allowlist to restrict access
 - ⚡ Written in Rust — tiny memory footprint, static binary, no runtime dependencies
 
@@ -115,14 +118,15 @@ docker compose up -d
 
 | Action | How |
 |---|---|
-| Download a track | Send a Deezer or Spotify link, or just type the song name |
+| Download a track | Send a Deezer, Spotify, YouTube, or Apple Music link, or just type the song name |
 | Search tracks | `/search` or tap 🔍 Search a track in /menu |
 | Search albums | `/album` or tap 💿 Search an album in /menu |
 | Download a Deezer URL | `/dl` |
-| Download from Spotify | `/sp` |
+| Download from a streaming service | `/sp` or tap 🔗 From streaming link in /menu |
 | Voice search | Send a voice note (if configured) |
 | Song recognition | Send a voice recording (if configured) |
 | Check deemix status | `/status` |
+| Clear completed downloads | `/clearqueue` or tap 🧹 Clear queue in /menu |
 | Update ARL | `/updatearl` |
 | Personal settings | `/settings` |
 | Show all buttons | `/menu` |
@@ -272,105 +276,7 @@ For more detail see the [Telegram Bot documentation](https://core.telegram.org/b
 
 ## Notifications on restart
 
-Send `/register` to the bot once. From then on, every time the container restarts you will receive a message letting you know the bot is back online.
-
----
-
-## Voice Features (optional)
-
-### Voice Search — Transcribe spoken song names
-
-Send a voice note saying a song or artist name. Teleemix transcribes it and searches Deezer.
-
-Three backend options — choose one:
-
-**Option 1 — OpenAI remote API** (easiest, pay-per-use ~$0.006/min)
-```
-OPENAI_API_KEY=sk-your-key-here
-```
-Sign up at [platform.openai.com](https://platform.openai.com/).
-
-**Option 2 — Local compatible server** (any OpenAI-compatible Whisper server)
-```
-WHISPER_URL=http://your-whisper-server:8000/v1/audio/transcriptions
-```
-Works with [faster-whisper-server](https://github.com/fedirz/faster-whisper-server), [whisper.cpp](https://github.com/ggerganov/whisper.cpp), or any compatible server.
-
-**Option 3 — Built-in local Whisper** (no API key needed, runs in Docker)
-
-Uncomment the `whisper` service block in `docker-compose.yml`, then set:
-```
-WHISPER_URL=http://whisper:8000/v1/audio/transcriptions
-```
-
-The default model is `small` which supports 99 languages including Dutch, English, and Arabic. To change the model, update `WHISPER__MODEL` in the compose file:
-
-| Model | Size | Speed | Accuracy |
-|---|---|---|---|
-| `tiny` | ~75MB | Fastest | Basic |
-| `base` | ~145MB | Fast | Good |
-| `small` | ~460MB | Balanced | **Recommended** |
-| `medium` | ~1.5GB | Slow | High |
-| `large-v3` | ~3GB | Slowest | Best |
-
-After changing the model, recreate the container:
-```bash
-docker compose up -d --force-recreate whisper
-```
-
----
-
-### Song Recognition — Identify a song from a recording
-
-Send a voice recording of a song playing. Teleemix identifies the song using [AudD](https://audd.io/) and queues it.
-
-```
-AUDD_API_KEY=your-key-here
-```
-
-Free tier gives **100 recognitions/month**. Sign up at [audd.io](https://audd.io/).
-
----
-
-Both features are **optional** — leave keys/URLs empty to disable. Users can toggle them individually in `/settings`.
-
----
-
-## Download Quality
-
-The default download quality is set via `DEEMIX_BITRATE` in your `.env`:
-
-| Value | Quality | Requirement |
-|---|---|---|
-| `9` | FLAC (lossless) | Deezer HiFi / Premium+ |
-| `3` | MP3 320kbps | Deezer Premium |
-| `1` | MP3 128kbps | Free accounts |
-
-Users can change the quality on the fly via `/settings` → 🎚️ Quality. Each tap cycles through the options.
-
-> ⚠️ Quality changes in /settings affect **all users** on the server immediately, since the setting is shared in memory. The change resets to the `DEEMIX_BITRATE` default when the container restarts.
-
-To lock the quality and prevent users from changing it, set:
-```
-DEEMIX_BITRATE_LOCK=true
-```
-
-When locked, the quality button in /settings shows a 🔒 and tapping it shows a message that it is administrator-locked.
-
----
-
-## Per-User Settings
-
-Every user has their own settings managed via `/settings`:
-
-| Setting | Default | Description |
-|---|---|---|
-| 🔔 Restart notifications | OFF | Get notified when the bot container restarts |
-| 🎤 Voice search | ON | Transcribe voice notes to search (requires OpenAI key) |
-| 🎵 Song recognition | ON | Identify songs from recordings (requires AudD key) |
-| 🎚️ Download quality | env default | Cycle between FLAC, MP3 320, MP3 128 (affects all users) |
-
-Settings are stored in `users.json` and persist across container restarts.
+Enable "🔔 Restart notifications" in `/settings`. From then on, every time the container restarts you will receive a message letting you know the bot is back online.
 
 ---
 
