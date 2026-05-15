@@ -8,6 +8,7 @@
 //! AudD song recognition  — set AUDD_API_KEY
 
 use reqwest::multipart;
+use regex::Regex;
 
 /// Transcribe an OGG audio file using the configured Whisper backend.
 /// Returns the transcribed text or an error string.
@@ -54,13 +55,23 @@ pub async fn transcribe(
     Ok(text.trim().to_string())
 }
 
+/// Recognition result from AudD.
+/// Prefer deezer_url → song_link (Odesli) → spotify_url → text search, in that order.
+pub struct RecognitionResult {
+    pub title: String,
+    pub artist: String,
+    pub deezer_url: Option<String>,
+    pub spotify_url: Option<String>,
+    pub song_link: Option<String>,
+}
+
 /// Identify a song from audio bytes using the AudD API.
-/// Returns (title, artist) or an error string.
+/// Returns RecognitionResult or an error string.
 pub async fn recognize(
     http: &reqwest::Client,
     audio_bytes: Vec<u8>,
     audd_key: &str,
-) -> Result<(String, String), String> {
+) -> Result<RecognitionResult, String> {
     if audd_key.is_empty() {
         return Err("Song recognition is not configured.".to_string());
     }
@@ -73,7 +84,7 @@ pub async fn recognize(
     let form = multipart::Form::new()
         .part("file", part)
         .text("api_token", audd_key.to_string())
-        .text("return", "spotify,deezer");
+        .text("return", "deezer,spotify");
 
     let resp = http
         .post("https://api.audd.io/")
@@ -100,5 +111,131 @@ pub async fn recognize(
         return Err("Song not recognized.".to_string());
     }
 
-    Ok((title, artist))
+    let deezer_url = result["deezer"]["link"]
+        .as_str()
+        .map(|s| s.to_string());
+
+    let spotify_url = result["spotify"]["external_urls"]["spotify"]
+        .as_str()
+        .map(|s| s.to_string());
+
+    let song_link = result["song_link"].as_str().map(|s| s.to_string());
+
+    log::info!(
+        "AudD recognized: title={:?} artist={:?} deezer_url={:?} spotify_url={:?} song_link={:?}",
+        title, artist, deezer_url, spotify_url, song_link
+    );
+    log::info!("AudD raw result keys: {:?}", result.as_object().map(|o| o.keys().collect::<Vec<_>>()));
+    log::info!("AudD deezer field: {}", result["deezer"]);
+    log::info!("AudD spotify field: {}", result["spotify"]);
+
+    Ok(RecognitionResult { title, artist, deezer_url, spotify_url, song_link })
+}
+
+/// Scrape a song.link/lis.tn page for a direct Deezer URL via __NEXT_DATA__ JSON.
+/// The Odesli API rejects lis.tn vanity URLs, so we parse the page HTML instead.
+pub async fn lookup_deezer_via_odesli(http: &reqwest::Client, song_link: &str) -> Option<String> {
+    log::info!("Scraping song.link page: {}", song_link);
+
+    let resp = http.get(song_link).send().await.ok()?;
+    let status = resp.status();
+    if !status.is_success() {
+        log::info!("song.link page fetch failed: {}", status);
+        return None;
+    }
+    let html = resp.text().await.ok()?;
+
+    let re = Regex::new(r#"<script id="__NEXT_DATA__" type="application/json">(.*?)</script>"#).ok()?;
+    let caps = re.captures(&html);
+    log::info!("song.link __NEXT_DATA__ regex matched: {}", caps.is_some());
+    let json_str = caps?.get(1)?.as_str().to_string();
+
+    let data: serde_json::Value = serde_json::from_str(&json_str).ok()?;
+    let page_props = &data["props"]["pageProps"];
+
+    // Try the two known shapes of song.link __NEXT_DATA__
+    let deezer_url =
+        page_props["data"]["linksByPlatform"]["deezer"]["url"].as_str()
+        .or_else(|| page_props["pageData"]["linksByPlatform"]["deezer"]["url"].as_str())
+        .map(|s| s.to_string());
+
+    if deezer_url.is_none() {
+        let keys: Vec<&str> = page_props.as_object()
+            .map(|o| o.keys().map(|k| k.as_str()).collect())
+            .unwrap_or_default();
+        log::info!("song.link __NEXT_DATA__ pageProps keys: {:?}", keys);
+    }
+
+    log::info!("song.link scraped Deezer URL: {:?}", deezer_url);
+    deezer_url
+}
+
+/// Look up a Deezer URL via the Odesli API using a Spotify URL directly.
+/// Odesli accepts Spotify track URLs and returns platform links including Deezer.
+pub async fn lookup_deezer_via_spotify(http: &reqwest::Client, spotify_url: &str) -> Option<String> {
+    log::info!("Odesli lookup via Spotify URL: {}", spotify_url);
+
+    let resp = http
+        .get("https://api.song.link/v1-alpha.1/links")
+        .query(&[("url", spotify_url)])
+        .send()
+        .await
+        .ok()?;
+
+    if !resp.status().is_success() {
+        log::info!("Odesli via Spotify failed: {}", resp.status());
+        return None;
+    }
+
+    let data: serde_json::Value = resp.json().await.ok()?;
+    let deezer_url = data["linksByPlatform"]["deezer"]["url"].as_str().map(|s| s.to_string());
+    log::info!("Odesli via Spotify Deezer URL: {:?}", deezer_url);
+    deezer_url
+}
+
+/// Search iTunes for title+artist, then pass the Apple Music URL to Odesli to get a Deezer link.
+/// iTunes is free/no-auth and globally indexed; Odesli accepts Apple Music URLs.
+pub async fn lookup_deezer_via_itunes(http: &reqwest::Client, title: &str, artist: &str) -> Option<String> {
+    let term = format!("{} {}", title, artist);
+    log::info!("iTunes search: {:?}", term);
+
+    let resp = match http
+        .get("https://itunes.apple.com/search")
+        .query(&[("term", term.as_str()), ("media", "music"), ("entity", "song"), ("limit", "1")])
+        .send()
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => { log::info!("iTunes request failed: {}", e); return None; }
+    };
+
+    log::info!("iTunes response status: {}", resp.status());
+    let data: serde_json::Value = match resp.json().await {
+        Ok(v) => v,
+        Err(e) => { log::info!("iTunes JSON parse failed: {}", e); return None; }
+    };
+    log::info!("iTunes resultCount: {}", data["resultCount"]);
+
+    let track_url = match data["results"][0]["trackViewUrl"].as_str() {
+        Some(u) => u.to_string(),
+        None => { log::info!("iTunes: no trackViewUrl in first result"); return None; }
+    };
+    log::info!("iTunes track URL: {}", track_url);
+
+    let resp = http
+        .get("https://api.song.link/v1-alpha.1/links")
+        .query(&[("url", track_url.as_str())])
+        .send()
+        .await
+        .ok()?;
+
+    if !resp.status().is_success() {
+        log::info!("Odesli via iTunes failed: {}", resp.status());
+        return None;
+    }
+
+    let data: serde_json::Value = resp.json().await.ok()?;
+    let deezer_url = data["linksByPlatform"]["deezer"]["url"].as_str().map(|s| s.to_string());
+    log::info!("iTunes→Odesli Deezer URL: {:?}", deezer_url);
+    deezer_url
 }
