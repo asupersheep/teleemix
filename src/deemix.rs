@@ -101,6 +101,31 @@ pub async fn get_queue(state: &Arc<BotState>) -> Result<QueueStatus, String> {
     Ok(QueueStatus { pending, downloading, done })
 }
 
+pub async fn clear_completed(state: &Arc<BotState>) -> Result<usize, String> {
+    let url = format!("{}/api/getQueue", state.config.deemix_url);
+    let resp = state.http.get(&url).send().await.map_err(|e| e.to_string())?;
+    let data: Value = resp.json().await.map_err(|e| e.to_string())?;
+
+    let mut cleared = 0usize;
+    if let Some(queue) = data["queue"].as_object() {
+        for (uuid, item) in queue {
+            let downloaded = item["downloaded"].as_u64().unwrap_or(0);
+            let size = item["size"].as_u64().unwrap_or(1);
+            if downloaded >= size && size > 0 {
+                let remove_url = format!("{}/api/removeFromQueue", state.config.deemix_url);
+                let _ = state.http
+                    .post(&remove_url)
+                    .json(&serde_json::json!({ "uuid": uuid }))
+                    .send()
+                    .await;
+                cleared += 1;
+            }
+        }
+    }
+
+    Ok(cleared)
+}
+
 pub async fn search(
     state: &Arc<BotState>,
     query: &str,
