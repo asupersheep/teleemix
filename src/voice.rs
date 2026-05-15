@@ -170,6 +170,29 @@ pub async fn lookup_deezer_via_odesli(http: &reqwest::Client, song_link: &str) -
     deezer_url
 }
 
+/// Look up a Deezer URL via the Odesli API using a Spotify URL directly.
+/// Odesli accepts Spotify track URLs and returns platform links including Deezer.
+pub async fn lookup_deezer_via_spotify(http: &reqwest::Client, spotify_url: &str) -> Option<String> {
+    log::info!("Odesli lookup via Spotify URL: {}", spotify_url);
+
+    let resp = http
+        .get("https://api.song.link/v1-alpha.1/links")
+        .query(&[("url", spotify_url)])
+        .send()
+        .await
+        .ok()?;
+
+    if !resp.status().is_success() {
+        log::info!("Odesli via Spotify failed: {}", resp.status());
+        return None;
+    }
+
+    let data: serde_json::Value = resp.json().await.ok()?;
+    let deezer_url = data["linksByPlatform"]["deezer"]["url"].as_str().map(|s| s.to_string());
+    log::info!("Odesli via Spotify Deezer URL: {:?}", deezer_url);
+    deezer_url
+}
+
 /// Search iTunes for title+artist, then pass the Apple Music URL to Odesli to get a Deezer link.
 /// iTunes is free/no-auth and globally indexed; Odesli accepts Apple Music URLs.
 pub async fn lookup_deezer_via_itunes(http: &reqwest::Client, title: &str, artist: &str) -> Option<String> {
