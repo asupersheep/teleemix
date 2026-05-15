@@ -28,13 +28,6 @@ Supports Deezer URLs, Spotify links, YouTube, YouTube Music, Apple Music, voice 
 
 ---
 
-> ⚠️ **Important:** Teleemix requires deemix to run with `DEEMIX_SINGLE_USER=true`. Without this, deemix runs in multi-user mode and Teleemix will get `NotLoggedIn` errors. Add this to your deemix environment variables:
-> ```
-> DEEMIX_SINGLE_USER=true
-> ```
-
----
-
 ## Features
 
 - 🎵 Send a **Deezer URL** (track, album, playlist) → queued instantly
@@ -87,6 +80,11 @@ nano .env
 ```
 
 Fill in all the values — see `.env.example` for descriptions of each variable.
+
+> ⚠️ Teleemix requires deemix to run with `DEEMIX_SINGLE_USER=true`. Without this, deemix runs in multi-user mode and Teleemix will get `NotLoggedIn` errors. Add this to your deemix environment variables:
+> ```
+> DEEMIX_SINGLE_USER=true
+> ```
 
 ### 4. Configure volume mounts
 
